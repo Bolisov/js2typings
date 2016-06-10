@@ -1,0 +1,11 @@
+{
+  "globalDependencies": {
+    "esprima": "registry:dt/esprima#2.1.0+20160317120654",
+    "estree": "registry:dt/estree#0.0.0+20160317120654",
+    "node": "registry:dt/node#6.0.0+20160608110640"
+  },
+  "dependencies": {
+    "chalk": "registry:npm/chalk#1.0.0+20160211003958",
+    "lodash": "registry:npm/lodash#4.0.0+20160416211519"
+  }
+}

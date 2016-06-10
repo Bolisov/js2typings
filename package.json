@@ -1,0 +1,23 @@
+{
+  "name": "js2typings",
+  "version": "0.0.0",
+  "description": "Generate Typescript typings from JS sources",
+  "main": "lib/index.ts",
+  "scripts": {
+    "start": "ts-node src/main.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Alexey Bolisov",
+  "license": "ISC",
+  "devDependencies": {
+    "typings": "^1.0.4",
+    "ts-node": "^0.8.0"
+  },
+  "dependencies": {
+    "chalk": "^1.1.3",
+    "code-block-writer": "^4.0.0",
+    "doctrine": "^1.2.2",
+    "esprima": "^2.7.2",
+    "lodash": "^4.13.1"
+  }
+}
