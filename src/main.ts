@@ -1,20 +1,22 @@
 import * as fs from 'fs';
+
 import * as chalk from 'chalk';
 import * as _ from 'lodash';
-import { parse } from './parser';
+import { parseCode } from './parser';
 import { format } from './writer';
 
-generate(`F:/Projects/GitHub/yeoman-test/lib/index.js`, 'yeoman-test.d.ts');
+generate(process.argv[2], process.argv[3]);
 
+function generate(filename: string, outFile?: string) {
 
-function generate(filename: string, outFile: string) {
+    
 
     let buffer = fs.readFileSync(filename);
-    let modules = parse(buffer.toString());
+    let modules = parseCode(buffer.toString(), "yeoman-test");
 
     let typings = format(modules);
 
-    console.log(typings);
+
 
     //let program = esprima.parse(buffer.toString(), { comment: true, attachComment: true });
 
@@ -22,5 +24,8 @@ function generate(filename: string, outFile: string) {
 
     //console.log(typings);
 
-    //fs.writeFileSync(outFile, typings);
+    if (outFile)
+        fs.writeFileSync(outFile, typings);
+    else
+        console.log(typings);
 }

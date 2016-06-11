@@ -1,7 +1,7 @@
 import CodeBlockWriter from "code-block-writer";
 import * as chalk from 'chalk';
 import * as _ from 'lodash';
-import { Module, VariableExport, FunctionExport, Type } from './parser';
+import { LocalExport, ExportMap, ExportBase, Module, VariableExport, FunctionExport, Type } from './parser';
 
 interface Colors {
     text(text: string): string;
@@ -23,18 +23,21 @@ class Formatter {
             return 'void';
     }
 
-    public variable(part: VariableExport) {
-        this.writer.write(`${this.colors.identifier(part.name)}: ${this.formatType(part.types)};`);
+    public variable(name: string, part: VariableExport) {
+        this.writer.write(`${this.colors.identifier(name)}: ${this.formatType(part.types)};`);
     }
 
     jsdocComment(text: string[]) {
         this.writer.writeLine(this.colors.comment('/**' + _.flatten(text.map(x => x.split(/\r\n|\r|\n/))).map(line => '\n * ' + line).join('') + '\n */'));
     }
 
-    public function(part: FunctionExport) {
+    public function(name: string, part: FunctionExport) {
 
-        let comments = [(part.description || '').trim()];
         const paramsWithDescriptions = _.filter(part.params, param => param.description);
+        const comments = [];
+
+        if (part.description)
+            comments.push((part.description || '').trim());
 
         if (paramsWithDescriptions.length > 0 && comments.length > 0) {
             comments.push("");
@@ -50,27 +53,23 @@ class Formatter {
 
         const params = part.params.map(param => `${this.colors.identifier(param.name)}: ${this.formatType(param.types)}`).join(', ');
 
-        this.writer.write(`function ${this.colors.identifier(part.name)} (${params}) : ${this.formatType(part.result)};`);
+        this.writer.write(`function ${this.colors.identifier(name)} (${params}) : ${this.formatType(part.result)};`);
     }
 
-    public module(module: Module) {
-        this.writer.write(`declare module "${module.name}"`);
-        this.writer.block(() => {
-
-            _.forEach(module.imports, (path, name) => {
-                this.writer.writeLine(`import * as ${this.colors.identifier(name)} from "${path}"`);
-            });
-
-            _.forEach(module.exports, (part, name) => {
+    public dispatch(exports: ExportMap | LocalExport) {
+        if (exports instanceof LocalExport)
+            this.writer.writeLine(`export = ${exports.identifier};`);
+        else {
+            _.forEach(exports, (part, name) => {
 
                 this.writer.writeLine('\n');
 
                 if (part instanceof VariableExport)
-                    this.variable(part);
+                    this.variable(name, part);
                 else if (part instanceof FunctionExport)
-                    this.function(part);
+                    this.function(name, part);
                 else if (part instanceof Module)
-                    this.module(part);
+                    this.module(name, part);
                 else
                     console.error(this.colors.error(`Unexpected export: ` + part));
 
@@ -80,6 +79,29 @@ class Formatter {
                     }
                 }
             });
+        }
+    }
+
+    public module(name: string, module: Module) {
+        this.writer.write(`declare module "${name}"`);
+        this.writer.block(() => {
+
+            _.forEach(module.imports, (path, name) => {
+                this.writer.writeLine(`import * as ${this.colors.identifier(name)} from "${path}"`);
+            });
+
+            _.forEach(module.locals, (part, name) => {
+                if (part instanceof VariableExport)
+                    this.variable(name, part);
+                else if (part instanceof FunctionExport)
+                    this.function(name, part);
+                else if (part instanceof Module)
+                    this.module(name, part);
+                else
+                    console.error(this.colors.error(`Unexpected export: ` + part));
+            });
+
+            this.dispatch(module.exports);
         });
     }
 }
@@ -100,13 +122,16 @@ class NoColors implements Colors {
     warning = (text: string) => text;
 }
 
-export function format(modules: Module[]) {
-    const writer = new CodeBlockWriter({ newLine: '\n' });
-    const formatter = new Formatter(writer, new DefaultColors());
+interface FormatOptions {
+    colors?: boolean
+}
 
-    for (var module of modules) {
-        formatter.module(module);
-    }
+export function format(modules: ExportMap, options?: FormatOptions) {
+    const option: FormatOptions = _.extend({ colors: true }, options);
+    const writer = new CodeBlockWriter({ newLine: '\n' });
+    const formatter = new Formatter(writer, option.colors ? new DefaultColors() : new NoColors());
+
+    formatter.dispatch(modules);
 
     return writer.toString();
 }

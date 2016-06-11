@@ -88,6 +88,10 @@ function getComments(node: ESTree.Node) {
     }
 }
 
+function isFunctionDeclaration(node: ESTree.Node): node is ESTree.FunctionDeclaration {
+    return node.type === "FunctionDeclaration";
+}
+
 function isVariableDeclaration(node: ESTree.Node): node is ESTree.VariableDeclaration {
     return node.type === "VariableDeclaration";
 }
@@ -134,22 +138,35 @@ export class Type {
 }
 
 export class ExportBase {
-    public name: string;
     public description: string;
     public errors: ExportError[] = []
+}
+
+export class LocalExport extends ExportBase {
+    identifier: string
 }
 
 export class VariableExport extends ExportBase {
     types: Type[];
 }
 
+export class Parameter {
+    name: string;
+    description: string;
+    types: Type[];
+}
+
 export class FunctionExport extends ExportBase {
-    params: VariableExport[] = [];
+    params: Parameter[] = [];
     result: Type[]
 }
 
 export class ExportError {
     message: string
+}
+
+export class ExportMap {
+    [key: string]: ExportBase
 }
 
 export class Module extends ExportBase {
@@ -158,14 +175,15 @@ export class Module extends ExportBase {
         super();
     }
 
+    public locals: {
+        [identifier: string]: ExportBase
+    } = {};
+
     public imports: {
         [key: string]: string
     } = {};
 
-    public exports: {
-        [key: string]: VariableExport | FunctionExport | Module
-    } = {};
-
+    public exports: LocalExport | ExportMap;
 }
 
 function parseJsDocType(type: Doctrine.Type): string[] {
@@ -182,23 +200,93 @@ function parseJsDocType(type: Doctrine.Type): string[] {
     throw "ENOTSUPP: " + type.type;
 }
 
-
 interface MatchResult {
     types: Type[],
     errors: string[]
 }
 
 
-export function parse(source: string): Module[] {
-    const globalTypes = ['string', 'String', 'object', 'number', 'Function', 'any', 'Object', 'object', 'void'];
-    const module = new Module();
-    const program = esprima.parse(source, { comment: true, attachComment: true });
+
+export function parseCode(code: string, moduleName: string): ExportMap {
+
+    debugger;
+
+    const globalTypes = ['string', 'String', 'object', 'number', 'Function', 'any', 'Object', 'void'];
+    const theModule = new Module();
+    const exportMap = new ExportMap();
+    const program = esprima.parse(code, { comment: true, attachComment: true });
     const typeMapping:
         {
             [jsType: string]: string
         } = {
             'Array': 'any[]',
         }
+
+    function getFunctionExport(node: ESTree.Function, comments: string) {
+        let { params, body } = node;
+        let paramsFormatted = params.map(p => (p as ESTree.Identifier).name).join(', ');
+        let exported = new FunctionExport();
+
+        let jsdoc = (comments && doctrine.parse(comments, { unwrap: true }) || { tags: [] }) as Doctrine.AST;
+        let { param, example, return: returns } = _.groupBy(jsdoc.tags, tag => tag.title);
+        let jsdocParams = _.keyBy(param, tag => tag.name) || {};
+
+        exported.result = [{ namespace: null, name: 'void' }];
+
+        if (isBlockStatement(body)) {
+            for (let statement of body.body) {
+                if (isReturnStatement(statement)) {
+                    exported.result = [{ namespace: null, name: 'any' }];
+
+                    if (returns) {
+                        const match = matchType(_.flatten(returns.map(r => parseJsDocType(r.type))));
+                        exported.result = match.types;
+                        exported.errors.push(...match.errors.map(message => ({ message })));
+                    } else {
+                        exported.errors.push({ message: `return type is not specified` });
+                    }
+                }
+            }
+        }
+
+        exported.params = params.map(p => {
+            const name = (p as ESTree.Identifier).name;
+            let types: Type[];
+
+            if (jsdocParams[name] && jsdocParams[name].type) {
+                let match = matchType(parseJsDocType(jsdocParams[name].type));
+                types = match.types;
+                theModule.errors.push(...match.errors.map(message => ({ message })));
+            } else {
+                types = [{ namespace: null, name: 'any' }];
+                exported.errors.push({ message: `parameter "${name}" type is not specified` });
+            }
+
+            return {
+                name: name,
+                types: types,
+                description: jsdocParams[name] && jsdocParams[name].description,
+                errors: []
+            }
+        });
+        exported.description = jsdoc.description;
+
+        return exported;
+    }
+
+    function getExport(node: ESTree.Expression, comments: string): ExportBase {
+        if (isFunctionExpression(node)) {
+            return getFunctionExport(node, comments);
+        }
+
+        if (isIdentifier(node)) {
+            let e = new LocalExport();
+            e.identifier = node.name;
+            return e;
+        }
+
+        throw Error(`Unexpected node: ${node.type}`);
+    }
 
     function matchType(jsTypes: string[]): MatchResult {
         const errors = [];
@@ -214,6 +302,7 @@ export function parse(source: string): Module[] {
     }
 
     for (var node of program.body) {
+        const comments = getComments(node);
 
         if (isVariableDeclaration(node)) {
 
@@ -231,20 +320,20 @@ export function parse(source: string): Module[] {
                         if (callee.name === "require" && init.arguments && init.arguments.length === 1) {
                             const argument: ESTree.Literal = init.arguments[0];
                             if (isLiteral(argument)) {
-                                module.imports[id.name] = argument.value as string;
+                                theModule.imports[id.name] = argument.value as string;
                             }
                         }
                     }
                 }
                 else {
-                    console.log('unknown');
+                    console.error(node);
                 }
             }
         }
-
+        else if (isFunctionDeclaration(node)) {
+            theModule.locals[node.id.name] = getFunctionExport(node, comments);
+        }
         else if (isExpressionStatement(node)) {
-            const comments = getComments(node);
-
             let assignment = { object: '', property: '', type: '' };
 
             const expression = node.expression;
@@ -266,59 +355,16 @@ export function parse(source: string): Module[] {
                     }
                 }
 
-                if (isFunctionExpression(right) && assignment.object === 'exports') {
-                    let { params, body } = right;
-                    let paramsFormatted = params.map(p => (p as ESTree.Identifier).name).join(', ');
-                    let exported = module.exports[assignment.property] = new FunctionExport();
-                    let jsdoc = (comments && doctrine.parse(comments, { unwrap: true }) || { tags: [] }) as Doctrine.AST;
-                    let { param, example, return: returns } = _.groupBy(jsdoc.tags, tag => tag.title);
-                    let jsdocParams = _.keyBy(param, tag => tag.name) || {};
-
-                    exported.name = assignment.property;
-                    exported.result = [{ namespace: null, name: 'void' }];
-
-                    if (isBlockStatement(body)) {
-                        for (let statement of body.body) {
-                            if (isReturnStatement(statement)) {
-                                exported.result = [{ namespace: null, name: 'any' }];
-
-                                if (returns) {
-                                    const match = matchType(_.flatten(returns.map(r => parseJsDocType(r.type))));
-                                    exported.result = match.types;
-                                    exported.errors.push(...match.errors.map(message => ({ message })));
-                                } else {
-                                    exported.errors.push({ message: `return type is not specified` });
-                                }
-                            }
-                        }
-                    }
-
-                    exported.params = params.map(p => {
-                        const name = (p as ESTree.Identifier).name;
-                        let types: Type[];
-
-                        if (jsdocParams[name] && jsdocParams[name].type) {
-                            let match = matchType(parseJsDocType(jsdocParams[name].type));
-                            types = match.types;
-                            module.errors.push(...match.errors.map(message => ({ message })));
-                        } else {
-                            types = [{ namespace: null, name: 'any' }];
-                            exported.errors.push({ message: `parameter "${name}" type is not specified` });
-                        }
-
-                        return {
-                            name: name,
-                            types: types,
-                            description: jsdocParams[name] && jsdocParams[name].description,
-                            errors: []
-                        }
-                    });
-                    exported.description = jsdoc.description;
+                if (assignment.object === 'module' && assignment.property === "exports") {
+                    /* export complete object */
+                    theModule.exports = getExport(right, comments) as LocalExport;
+                }
+                else if (assignment.object === 'exports') {
+                    exportMap[assignment.property] = getExport(right, comments);
                 }
                 else {
                     console.error(node);
                 }
-
             }
         }
 
@@ -327,7 +373,7 @@ export function parse(source: string): Module[] {
         }
     }
 
-    _.map(module.exports, e => {
+    _.map(exportMap, e => {
 
         if (e instanceof VariableExport) {
             const { types } = e;
@@ -363,5 +409,8 @@ export function parse(source: string): Module[] {
 
     });
 
-    return [module];
+    if (!theModule.exports)
+        theModule.exports = exportMap;
+
+    return { [moduleName]: theModule };
 }

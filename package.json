@@ -4,14 +4,18 @@
   "description": "Generate Typescript typings from JS sources",
   "main": "lib/index.ts",
   "scripts": {
+    "compile": "tsc -p .",
     "start": "ts-node src/main.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha --require ts-node/register test/*.ts"
   },
   "author": "Alexey Bolisov",
   "license": "ISC",
   "devDependencies": {
-    "typings": "^1.0.4",
-    "ts-node": "^0.8.0"
+    "bdd": "^1.0.0",
+    "chai": "^3.5.0",
+    "mocha": "^2.5.3",
+    "ts-node": "^0.8.0",
+    "typings": "^1.0.4"
   },
   "dependencies": {
     "chalk": "^1.1.3",

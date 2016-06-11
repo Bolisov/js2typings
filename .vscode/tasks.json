@@ -13,6 +13,20 @@
                 "run",
                 "start"
             ]
+        },
+        {
+            "taskName": "test",
+            "args": [
+                "run",
+                "test"
+            ]
+        },
+        {
+            "taskName": "compile",
+            "args": [
+                "run",
+                "compile"
+            ]
         }
     ]
 }
