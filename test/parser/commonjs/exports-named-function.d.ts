@@ -1,4 +1,4 @@
-declare module "extends export" {
+declare module "exports-named-function" {
     
     /**
      * Create a function that display hello message to console

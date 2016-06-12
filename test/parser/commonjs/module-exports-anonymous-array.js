@@ -1,0 +1,1 @@
+module.exports = ['elem1', 'elem2', 'elem3'];
