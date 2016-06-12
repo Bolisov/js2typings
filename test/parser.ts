@@ -32,8 +32,8 @@ function processDirectory(dir: string) {
 
                             let expected = fs.readFileSync(definitionFile).toString();
 
-                            typings = _.compact(typings.split(/\r\n|\r|\n/).map(line => line.trim())).join('\n');
-                            expected = _.compact(expected.split(/\r\n|\r|\n/).map(line => line.trim())).join('\n');
+                            typings = _.compact(typings.split(/\r\n|\r|\n/).map(line => line.replace(/\s*([,!?:.\(\)\=])\s*/g, '$1').trim())).join('\n');
+                            expected = _.compact(expected.split(/\r\n|\r|\n/).map(line => line.replace(/\s*([,!?:.\(\)\=])\s*/g, '$1').trim())).join('\n');
 
                             expect(typings).to.eq(expected);
                         })
