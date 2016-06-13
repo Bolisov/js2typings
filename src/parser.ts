@@ -205,11 +205,16 @@ interface MatchResult {
     errors: string[]
 }
 
-
+function getObjectPath(node: ESTree.Node) {
+    if (isIdentifier(node))
+        return node.name;
+    else if (isMemberExpression(node))
+        return `${getObjectPath(node.object)}.${getObjectPath(node.property)}`;
+    else
+        throw `Unexpected not type: ${node.type}`;
+}
 
 export function parseCode(code: string, moduleName: string): ExportMap {
-
-    debugger;
 
     const globalTypes = ['string', 'String', 'object', 'number', 'Function', 'any', 'Object', 'void'];
     const theModule = new Module();
@@ -285,7 +290,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
             return e;
         }
 
-        throw Error(`Unexpected node: ${node.type}`);
+        throw Error(`Unexpected node: ${node.type} `);
     }
 
     function matchType(jsTypes: string[]): MatchResult {
@@ -303,7 +308,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
 
     for (var node of program.body) {
         const comments = getComments(node);
-
+        debugger;
         if (isVariableDeclaration(node)) {
 
             const variableDeclaration = node;
@@ -334,37 +339,34 @@ export function parseCode(code: string, moduleName: string): ExportMap {
             theModule.locals[node.id.name] = getFunctionExport(node, comments);
         }
         else if (isExpressionStatement(node)) {
-            let assignment = { object: '', property: '', type: '' };
 
             const expression = node.expression;
 
             if (isAssignmentExpression(expression)) {
 
                 const { left, right } = expression;
+                let assignment = { object: null as string, property: null as string };
 
                 if (isMemberExpression(left)) {
-
                     const { object, property } = left;
 
-                    if (isIdentifier(object)) {
-                        assignment.object = object.name;
-                    }
-
-                    if (isIdentifier(property)) {
-                        assignment.property = property.name;
-                    }
+                    assignment.object = getObjectPath(object);
+                    assignment.property = getObjectPath(property);
                 }
 
                 if (assignment.object === 'module' && assignment.property === "exports") {
                     /* export complete object */
                     theModule.exports = getExport(right, comments) as LocalExport;
                 }
-                else if (assignment.object === 'exports') {
+                else if (assignment.object === 'exports' || assignment.object === 'module.exports') {
                     exportMap[assignment.property] = getExport(right, comments);
                 }
                 else {
-                    console.error(node);
+                    console.log(`Assignment skipped ${assignment.object}.${assignment.property}`);
                 }
+            }
+            else {
+                throw `Unexpected expression type: ${expression.type}`;
             }
         }
 
