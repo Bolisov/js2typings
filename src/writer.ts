@@ -85,6 +85,11 @@ class Formatter {
             this.variable(tmpName, exports as any as VariableExport);
             this.writer.writeLine(`export = ${tmpName};`);
         }
+        else if (exports instanceof FunctionExport) {
+            const tmpName = '__module__';
+            this.function(tmpName, exports as any as FunctionExport);
+            this.writer.writeLine(`export = ${tmpName};`);
+        }
         else {
             _.forEach(exports, (part, name) => {
 

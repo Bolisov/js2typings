@@ -8,7 +8,7 @@
             "program": "${workspaceRoot}/lib/src/main.js",
             "stopOnEntry": false,
             "args": [
-                "test/parser/commonjs/exports-anonymous-function.js"
+                "test/parser/commonjs/module-exports-anonymous-function.js"
             ],
             "cwd": "${workspaceRoot}",
             "preLaunchTask": "compile",
