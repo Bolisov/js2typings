@@ -314,7 +314,19 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                         return e;
                     }
                 })
+            },
+            ObjectExpression: (node) => {
+                const e = new FunctionExport();
 
+                for (var property of node.properties) {
+                    const name = walk<string>(property.key, {
+                        Identifier: (identifier) => identifier.name
+                    });
+
+                    e.prototype[name] = getExport(property.value, null);
+                }
+
+                return e;
             }
         });
     }
@@ -373,8 +385,6 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                     AssignmentExpression: (expression) => {
                         const { left, right } = expression;
                         let assignment = { object: null as string, property: null as string };
-
-                        debugger;
 
                         walk(left, {
                             MemberExpression: (left) => {

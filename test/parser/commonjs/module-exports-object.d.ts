@@ -1,6 +1,8 @@
 declare module "module-exports-object" {
-    export = {
-        sayHelloInEnglish: () => String,
-        sayHelloInSpanish: () => String
+    class __module__ {
+        public sayHelloInEnglish(): any;
+        public sayHelloInSpanish(): any;
     }
+
+    export = new __module__;
 }

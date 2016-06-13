@@ -38,7 +38,7 @@ class Formatter {
             .block(() => {
                 if (part.params.length > 0) {
                     const params = part.params.map(param => `${this.colors.identifier(param.name)}: ${this.formatType(param.types)}`).join(', ');
-                    this.writer.write(`constructor (${params});`);
+                    this.writer.writeLine(`constructor (${params});`);
                 }
 
                 _.forEach(part.prototype, (member, name) => {
@@ -46,7 +46,7 @@ class Formatter {
                         this.variable(name, member);
                     else if (member instanceof FunctionExport) {
                         const params = member.params.map(param => `${this.colors.identifier(param.name)}: ${this.formatType(param.types)}`).join(', ');
-                        this.writer.write(`public ${this.colors.identifier(name)} (${params}) : ${this.formatType(member.result)};`);
+                        this.writer.writeLine(`public ${this.colors.identifier(name)} (${params}) : ${this.formatType(member.result)};`);
                     }
                 });
             });
@@ -74,7 +74,7 @@ class Formatter {
 
         const params = part.params.map(param => `${this.colors.identifier(param.name)}: ${this.formatType(param.types)}`).join(', ');
 
-        this.writer.write(`function ${this.colors.identifier(name)} (${params}) : ${this.formatType(part.result)};`);
+        this.writer.writeLine(`function ${this.colors.identifier(name)} (${params}) : ${this.formatType(part.result)};`);
     }
 
     public dispatch(exports: ExportMap | LocalExport) {
@@ -87,8 +87,16 @@ class Formatter {
         }
         else if (exports instanceof FunctionExport) {
             const tmpName = '__module__';
-            this.function(tmpName, exports as any as FunctionExport);
-            this.writer.writeLine(`export = ${tmpName};`);
+
+            if (_.isEmpty((exports as any as FunctionExport).prototype)) {
+                this.function(tmpName, exports as any as FunctionExport);
+                this.writer.writeLine(`export = ${tmpName};`);
+            }
+            else {
+                this.class(tmpName, exports as any as FunctionExport, false);
+                this.writer.writeLine(`export = new ${tmpName};`);
+            }
+
         }
         else {
             _.forEach(exports, (part, name) => {
@@ -144,7 +152,6 @@ class Formatter {
                 else
                     console.error(this.colors.error(`Unexpected export: ` + part));
             });
-
             this.dispatch(module.exports);
         });
     }
