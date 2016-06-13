@@ -31,10 +31,10 @@ class Formatter {
         this.writer.writeLine(this.colors.comment('/**' + _.flatten(text.map(x => x.split(/\r\n|\r|\n/))).map(line => '\n * ' + line).join('') + '\n */'));
     }
 
-    public class(name: string, part: FunctionExport) {
+    public class(name: string, part: FunctionExport, exported: boolean) {
 
         this.writer
-            .write(`export class ${this.colors.identifier(name)}`)
+            .write(`${exported ? 'export' : ''} class ${this.colors.identifier(name)}`)
             .block(() => {
                 if (part.params.length > 0) {
                     const params = part.params.map(param => `${this.colors.identifier(param.name)}: ${this.formatType(param.types)}`).join(', ');
@@ -102,7 +102,7 @@ class Formatter {
                         this.function(name, part);
                     }
                     else {
-                        this.class(name, part);
+                        this.class(name, part, true);
                     }
                 }
                 else if (part instanceof Module)
@@ -134,7 +134,10 @@ class Formatter {
                 if (part instanceof VariableExport)
                     this.variable(name, part);
                 else if (part instanceof FunctionExport) {
-                    this.function(name, part);
+                    if (_.isEmpty(part.prototype))
+                        this.function(name, part);
+                    else
+                        this.class(name, part, false);
                 }
                 else if (part instanceof Module)
                     this.module(name, part);

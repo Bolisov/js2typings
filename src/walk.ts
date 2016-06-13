@@ -11,6 +11,7 @@ interface WalkPath<TResult> {
     BlockStatement?: (node: ESTree.BlockStatement) => TResult,
     CallExpression?: ((node: ESTree.CallExpression) => TResult),
     ArrayExpression?: ((node: ESTree.ArrayExpression) => TResult),
+    NewExpression?: (node: ESTree.NewExpression) => TResult,
 }
 
 var actualPath: string[] = [];

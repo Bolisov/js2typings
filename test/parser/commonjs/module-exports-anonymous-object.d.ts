@@ -1,9 +1,9 @@
 declare module "module-exports-anonymous-object" {
     class Buz {
-        public log: () => void
+        public log(): void;
     }
 
-    var static: Buz;
+    var __module__: Buz;
 
-    export = static;
+    export = __module__;
 }

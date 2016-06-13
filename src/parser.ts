@@ -235,7 +235,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
         }
 
     function getFunctionExport(node: ESTree.Function, comments: string) {
-        debugger;
+
         let { params, body } = node;
         let paramsFormatted = params.map(p => (p as ESTree.Identifier).name).join(', ');
         let exported = new FunctionExport();
@@ -303,6 +303,18 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 const e = new VariableExport();
                 e.types = [new Type(null, 'Array', new Type(null, 'any'))];
                 return e;
+            },
+            NewExpression: (node) => {
+                const { callee } = node;
+
+                return walk(callee, {
+                    Identifier: (node) => {
+                        const e = new VariableExport();
+                        e.types = [new Type(null, node.name)];
+                        return e;
+                    }
+                })
+
             }
         });
     }
