@@ -9,7 +9,6 @@ import { parseCode } from '../src/parser';
 import { format } from '../src/writer';
 
 function processDirectory(dir: string) {
-    console.log(dir);
 
     describe(dir, () => {
 

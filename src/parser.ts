@@ -379,9 +379,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 const expression = node.expression;
 
                 walk(expression, {
-                    Literal: (literal) => {
-                        console.log(`skip literal: ${literal.value}`);
-                    },
+                    Literal: (literal) => { },
                     AssignmentExpression: (expression) => {
                         const { left, right } = expression;
                         let assignment = { object: null as string, property: null as string };
