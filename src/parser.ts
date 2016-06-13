@@ -1,6 +1,8 @@
 import * as esprima from 'esprima';
 import * as _ from 'lodash';
 
+import { walk } from './walk';
+
 namespace Doctrine {
 
     export function isNonNullableType(type: Type): type is NonNullableType {
@@ -206,12 +208,10 @@ interface MatchResult {
 }
 
 function getObjectPath(node: ESTree.Node) {
-    if (isIdentifier(node))
-        return node.name;
-    else if (isMemberExpression(node))
-        return `${getObjectPath(node.object)}.${getObjectPath(node.property)}`;
-    else
-        throw `Unexpected not type: ${node.type}`;
+    return walk<string>(node, {
+        Identifier: (node) => node.name,
+        MemberExpression: (node) => `${getObjectPath(node.object)}.${getObjectPath(node.property)}`
+    });
 }
 
 export function parseCode(code: string, moduleName: string): ExportMap {
@@ -280,17 +280,15 @@ export function parseCode(code: string, moduleName: string): ExportMap {
     }
 
     function getExport(node: ESTree.Expression, comments: string): ExportBase {
-        if (isFunctionExpression(node)) {
-            return getFunctionExport(node, comments);
-        }
 
-        if (isIdentifier(node)) {
-            let e = new LocalExport();
-            e.identifier = node.name;
-            return e;
-        }
-
-        throw Error(`Unexpected node: ${node.type} `);
+        return walk<ExportBase>(node, {
+            FunctionExpression: (node) => getFunctionExport(node, comments),
+            Identifier: (node) => {
+                let e = new LocalExport();
+                e.identifier = node.name;
+                return e;
+            }
+        });
     }
 
     function matchType(jsTypes: string[]): MatchResult {
@@ -308,71 +306,66 @@ export function parseCode(code: string, moduleName: string): ExportMap {
 
     for (var node of program.body) {
         const comments = getComments(node);
-        debugger;
-        if (isVariableDeclaration(node)) {
 
-            const variableDeclaration = node;
+        walk(node, {
+            VariableDeclaration: (node) => {
+                const variableDeclaration = node;
 
-            for (var declarator of variableDeclaration.declarations) {
+                for (var declarator of variableDeclaration.declarations) {
 
-                const { init, id } = declarator;
+                    const { init, id } = declarator;
 
-                if (isCallExpression(init) && isIdentifier(id)) {
+                    if (isCallExpression(init) && isIdentifier(id)) {
 
-                    const { callee } = init;
+                        const { callee } = init;
 
-                    if (isIdentifier(callee)) {
-                        if (callee.name === "require" && init.arguments && init.arguments.length === 1) {
-                            const argument: ESTree.Literal = init.arguments[0];
-                            if (isLiteral(argument)) {
-                                theModule.imports[id.name] = argument.value as string;
+                        if (isIdentifier(callee)) {
+                            if (callee.name === "require" && init.arguments && init.arguments.length === 1) {
+                                const argument: ESTree.Literal = init.arguments[0];
+                                if (isLiteral(argument)) {
+                                    theModule.imports[id.name] = argument.value as string;
+                                }
                             }
                         }
                     }
+                    else {
+                        console.error(node);
+                    }
                 }
-                else {
-                    console.error(node);
-                }
+            },
+            FunctionDeclaration: (node) => {
+                theModule.locals[node.id.name] = getFunctionExport(node, comments);
+            },
+            ExpressionStatement: (node) => {
+                const expression = node.expression;
+
+                walk(expression, {
+                    AssignmentExpression: (expression) => {
+                        const { left, right } = expression;
+                        let assignment = { object: null as string, property: null as string };
+
+                        walk(left, {
+                            MemberExpression: (left) => {
+                                const { object, property } = left;
+                                assignment.object = getObjectPath(object);
+                                assignment.property = getObjectPath(property);
+                            }
+                        });
+
+                        if (assignment.object === 'module' && assignment.property === "exports") {
+                            /* export complete object */
+                            theModule.exports = getExport(right, comments) as LocalExport;
+                        }
+                        else if (assignment.object === 'exports' || assignment.object === 'module.exports') {
+                            exportMap[assignment.property] = getExport(right, comments);
+                        }
+                        else {
+                            console.log(`Assignment skipped ${assignment.object}.${assignment.property}`);
+                        }
+                    }
+                });
             }
-        }
-        else if (isFunctionDeclaration(node)) {
-            theModule.locals[node.id.name] = getFunctionExport(node, comments);
-        }
-        else if (isExpressionStatement(node)) {
-
-            const expression = node.expression;
-
-            if (isAssignmentExpression(expression)) {
-
-                const { left, right } = expression;
-                let assignment = { object: null as string, property: null as string };
-
-                if (isMemberExpression(left)) {
-                    const { object, property } = left;
-
-                    assignment.object = getObjectPath(object);
-                    assignment.property = getObjectPath(property);
-                }
-
-                if (assignment.object === 'module' && assignment.property === "exports") {
-                    /* export complete object */
-                    theModule.exports = getExport(right, comments) as LocalExport;
-                }
-                else if (assignment.object === 'exports' || assignment.object === 'module.exports') {
-                    exportMap[assignment.property] = getExport(right, comments);
-                }
-                else {
-                    console.log(`Assignment skipped ${assignment.object}.${assignment.property}`);
-                }
-            }
-            else {
-                throw `Unexpected expression type: ${expression.type}`;
-            }
-        }
-
-        else {
-            console.error(node);
-        }
+        });
     }
 
     _.map(exportMap, e => {
