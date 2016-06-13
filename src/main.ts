@@ -13,7 +13,7 @@ function generate(filename: string, outFile?: string) {
 
     let buffer = fs.readFileSync(filename);
     let modules = parseCode(buffer.toString(), "yeoman-test");
-debugger;
+
     let typings = format(modules);
 
 

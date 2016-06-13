@@ -367,16 +367,21 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 const expression = node.expression;
 
                 walk(expression, {
+                    Literal: (literal) => {
+                        console.log(`skip literal: ${literal.value}`);
+                    },
                     AssignmentExpression: (expression) => {
                         const { left, right } = expression;
                         let assignment = { object: null as string, property: null as string };
+
+                        debugger;
 
                         walk(left, {
                             MemberExpression: (left) => {
                                 const { object, property } = left;
                                 assignment.object = getObjectPath(object);
                                 assignment.property = getObjectPath(property);
-                            }
+                            },
                         });
 
                         if (assignment.object === 'module' && assignment.property === "exports") {
