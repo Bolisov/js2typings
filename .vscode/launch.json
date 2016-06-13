@@ -8,7 +8,7 @@
             "program": "${workspaceRoot}/lib/src/main.js",
             "stopOnEntry": false,
             "args": [
-                "test/parser/export function.js"
+                "test/parser/commonjs/exports-prototype.js"
             ],
             "cwd": "${workspaceRoot}",
             "preLaunchTask": "compile",

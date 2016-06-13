@@ -90,45 +90,45 @@ function getComments(node: ESTree.Node) {
     }
 }
 
-function isFunctionDeclaration(node: ESTree.Node): node is ESTree.FunctionDeclaration {
-    return node.type === "FunctionDeclaration";
-}
+// function isFunctionDeclaration(node: ESTree.Node): node is ESTree.FunctionDeclaration {
+//     return node.type === "FunctionDeclaration";
+// }
 
-function isVariableDeclaration(node: ESTree.Node): node is ESTree.VariableDeclaration {
-    return node.type === "VariableDeclaration";
-}
+// function isVariableDeclaration(node: ESTree.Node): node is ESTree.VariableDeclaration {
+//     return node.type === "VariableDeclaration";
+// }
 
-function isCallExpression(node: ESTree.Node): node is ESTree.CallExpression {
-    return node.type === "CallExpression";
-}
+// function isCallExpression(node: ESTree.Node): node is ESTree.CallExpression {
+//     return node.type === "CallExpression";
+// }
 
-function isExpressionStatement(node: ESTree.Node): node is ESTree.ExpressionStatement {
-    return node.type === "ExpressionStatement";
-}
+// function isExpressionStatement(node: ESTree.Node): node is ESTree.ExpressionStatement {
+//     return node.type === "ExpressionStatement";
+// }
 
-function isIdentifier(node: ESTree.Node): node is ESTree.Identifier {
-    return node.type === "Identifier";
-}
+// function isIdentifier(node: ESTree.Node): node is ESTree.Identifier {
+//     return node.type === "Identifier";
+// }
 
-function isLiteral(node: ESTree.Node): node is ESTree.Literal {
-    return node.type === "Literal";
-}
+// function isLiteral(node: ESTree.Node): node is ESTree.Literal {
+//     return node.type === "Literal";
+// }
 
-function isAssignmentExpression(node: ESTree.Node): node is ESTree.AssignmentExpression {
-    return node.type === "AssignmentExpression";
-}
+// function isAssignmentExpression(node: ESTree.Node): node is ESTree.AssignmentExpression {
+//     return node.type === "AssignmentExpression";
+// }
 
-function isMemberExpression(node: ESTree.Node): node is ESTree.MemberExpression {
-    return node.type === "MemberExpression";
-}
+// function isMemberExpression(node: ESTree.Node): node is ESTree.MemberExpression {
+//     return node.type === "MemberExpression";
+// }
 
-function isFunctionExpression(node: ESTree.Node): node is ESTree.FunctionExpression {
-    return node.type === "FunctionExpression";
-}
+// function isFunctionExpression(node: ESTree.Node): node is ESTree.FunctionExpression {
+//     return node.type === "FunctionExpression";
+// }
 
-function isBlockStatement(node: ESTree.Node): node is ESTree.BlockStatement {
-    return node.type === "BlockStatement";
-}
+// function isBlockStatement(node: ESTree.Node): node is ESTree.BlockStatement {
+//     return node.type === "BlockStatement";
+// }
 
 function isReturnStatement(node: ESTree.Node): node is ESTree.ReturnStatement {
     return node.type === "ReturnStatement";
@@ -141,15 +141,12 @@ export class Type {
 
 export class ExportBase {
     public description: string;
-    public errors: ExportError[] = []
+    public errors: ExportError[] = [];
+
 }
 
 export class LocalExport extends ExportBase {
     identifier: string
-}
-
-export class VariableExport extends ExportBase {
-    types: Type[];
 }
 
 export class Parameter {
@@ -158,9 +155,17 @@ export class Parameter {
     types: Type[];
 }
 
+
+export class VariableExport extends ExportBase {
+    types: Type[];
+    exported: boolean;
+}
+
 export class FunctionExport extends ExportBase {
     params: Parameter[] = [];
-    result: Type[]
+    result: Type[];
+    prototype: ExportMap = {};
+
 }
 
 export class ExportError {
@@ -185,7 +190,7 @@ export class Module extends ExportBase {
         [key: string]: string
     } = {};
 
-    public exports: LocalExport | ExportMap;
+    public exports: LocalExport | ExportMap
 }
 
 function parseJsDocType(type: Doctrine.Type): string[] {
@@ -238,21 +243,23 @@ export function parseCode(code: string, moduleName: string): ExportMap {
 
         exported.result = [{ namespace: null, name: 'void' }];
 
-        if (isBlockStatement(body)) {
-            for (let statement of body.body) {
-                if (isReturnStatement(statement)) {
-                    exported.result = [{ namespace: null, name: 'any' }];
+        walk(body, {
+            BlockStatement: (body) => {
+                for (let statement of body.body) {
+                    if (isReturnStatement(statement)) {
+                        exported.result = [{ namespace: null, name: 'any' }];
 
-                    if (returns) {
-                        const match = matchType(_.flatten(returns.map(r => parseJsDocType(r.type))));
-                        exported.result = match.types;
-                        exported.errors.push(...match.errors.map(message => ({ message })));
-                    } else {
-                        exported.errors.push({ message: `return type is not specified` });
+                        if (returns) {
+                            const match = matchType(_.flatten(returns.map(r => parseJsDocType(r.type))));
+                            exported.result = match.types;
+                            exported.errors.push(...match.errors.map(message => ({ message })));
+                        } else {
+                            exported.errors.push({ message: `return type is not specified` });
+                        }
                     }
                 }
             }
-        }
+        });
 
         exported.params = params.map(p => {
             const name = (p as ESTree.Identifier).name;
@@ -274,6 +281,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 errors: []
             }
         });
+
         exported.description = jsdoc.description;
 
         return exported;
@@ -308,31 +316,30 @@ export function parseCode(code: string, moduleName: string): ExportMap {
         const comments = getComments(node);
 
         walk(node, {
-            VariableDeclaration: (node) => {
-                const variableDeclaration = node;
+            VariableDeclaration: (node) =>
+                node.declarations.forEach(declarator =>
+                    walk(declarator.id, {
+                        Identifier: (id) =>
+                            walk(declarator.init, {
+                                FunctionExpression: (functionExpression) => {
+                                    theModule.locals[id.name] = getExport(functionExpression, comments);
+                                },
+                                CallExpression: (init) =>
+                                    walk(init.callee, {
+                                        Identifier: (callee) => {
+                                            if (callee.name === "require" && init.arguments && init.arguments.length === 1) {
 
-                for (var declarator of variableDeclaration.declarations) {
+                                                const argument: ESTree.Literal = init.arguments[0];
 
-                    const { init, id } = declarator;
-
-                    if (isCallExpression(init) && isIdentifier(id)) {
-
-                        const { callee } = init;
-
-                        if (isIdentifier(callee)) {
-                            if (callee.name === "require" && init.arguments && init.arguments.length === 1) {
-                                const argument: ESTree.Literal = init.arguments[0];
-                                if (isLiteral(argument)) {
-                                    theModule.imports[id.name] = argument.value as string;
-                                }
-                            }
-                        }
-                    }
-                    else {
-                        console.error(node);
-                    }
-                }
-            },
+                                                walk(argument, {
+                                                    Literal: (argument) => { theModule.imports[id.name] = argument.value as string; }
+                                                });
+                                            }
+                                        }
+                                    })
+                            })
+                    })
+                ),
             FunctionDeclaration: (node) => {
                 theModule.locals[node.id.name] = getFunctionExport(node, comments);
             },
@@ -359,6 +366,10 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                         else if (assignment.object === 'exports' || assignment.object === 'module.exports') {
                             exportMap[assignment.property] = getExport(right, comments);
                         }
+                        else if (assignment.object.match(/\.prototype$/)) {
+                            let local = theModule.locals[assignment.object.replace(/\.prototype$/, '')] as FunctionExport;
+                            local.prototype[assignment.property] = getExport(right, comments);
+                        }
                         else {
                             console.log(`Assignment skipped ${assignment.object}.${assignment.property}`);
                         }
@@ -368,7 +379,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
         });
     }
 
-    _.map(exportMap, e => {
+    _.map(exportMap, (e, key) => {
 
         if (e instanceof VariableExport) {
             const { types } = e;
@@ -401,7 +412,12 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 }
             }
         }
-
+        else if (e instanceof LocalExport) {
+            if (e.identifier === key) {
+                exportMap[e.identifier] = theModule.locals[e.identifier];
+                delete theModule.locals[e.identifier];                
+            }
+        }
     });
 
     if (!theModule.exports)

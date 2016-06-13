@@ -31,6 +31,27 @@ class Formatter {
         this.writer.writeLine(this.colors.comment('/**' + _.flatten(text.map(x => x.split(/\r\n|\r|\n/))).map(line => '\n * ' + line).join('') + '\n */'));
     }
 
+    public class(name: string, part: FunctionExport) {
+
+        this.writer
+            .write(`export class ${this.colors.identifier(name)}`)
+            .block(() => {
+                if (part.params.length > 0) {
+                    const params = part.params.map(param => `${this.colors.identifier(param.name)}: ${this.formatType(param.types)}`).join(', ');
+                    this.writer.write(`constructor (${params});`);
+                }
+
+                _.forEach(part.prototype, (member, name) => {
+                    if (member instanceof VariableExport)
+                        this.variable(name, member);
+                    else if (member instanceof FunctionExport) {
+                        const params = member.params.map(param => `${this.colors.identifier(param.name)}: ${this.formatType(param.types)}`).join(', ');
+                        this.writer.write(`public ${this.colors.identifier(name)} (${params}) : ${this.formatType(member.result)};`);
+                    }
+                });
+            });
+    }
+
     public function(name: string, part: FunctionExport) {
 
         const paramsWithDescriptions = _.filter(part.params, param => param.description);
@@ -66,10 +87,18 @@ class Formatter {
 
                 if (part instanceof VariableExport)
                     this.variable(name, part);
-                else if (part instanceof FunctionExport)
-                    this.function(name, part);
+                else if (part instanceof FunctionExport) {
+                    if (_.isEmpty(part.prototype)) {
+                        this.function(name, part);
+                    }
+                    else {
+                        this.class(name, part);
+                    }
+                }
                 else if (part instanceof Module)
                     this.module(name, part);
+                // else if (part instanceof LocalExport)
+                //     this.writer.writeLine(`export ${part.identifier};`);
                 else
                     console.error(this.colors.error(`Unexpected export: ` + part));
 
@@ -93,8 +122,9 @@ class Formatter {
             _.forEach(module.locals, (part, name) => {
                 if (part instanceof VariableExport)
                     this.variable(name, part);
-                else if (part instanceof FunctionExport)
+                else if (part instanceof FunctionExport) {
                     this.function(name, part);
+                }
                 else if (part instanceof Module)
                     this.module(name, part);
                 else
