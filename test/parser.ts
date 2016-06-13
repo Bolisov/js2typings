@@ -28,7 +28,7 @@ function processDirectory(dir: string) {
                     if (fs.existsSync(definitionFile)) {
                         it(name, () => {
                             let modules = parseCode(fs.readFileSync(sourceFile).toString(), name);
-                            let typings = format(modules, { colors: false });
+                            let typings = format(modules, { colors: false, warnings: false });
 
                             let expected = fs.readFileSync(definitionFile).toString();
 
