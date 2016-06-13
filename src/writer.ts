@@ -12,7 +12,7 @@ interface Colors {
 }
 
 class Formatter {
-    constructor(private writer: CodeBlockWriter, private colors: Colors) {
+    constructor(private writer: CodeBlockWriter, private colors: Colors, private warnings: boolean) {
 
     }
 
@@ -73,7 +73,7 @@ class Formatter {
                 else
                     console.error(this.colors.error(`Unexpected export: ` + part));
 
-                if (part.errors) {
+                if (this.warnings && part.errors.length > 0) {
                     for (const error of part.errors) {
                         this.writer.writeLine(this.colors.error('// WARN: ' + error.message));
                     }
@@ -123,13 +123,14 @@ class NoColors implements Colors {
 }
 
 interface FormatOptions {
-    colors?: boolean
+    colors?: boolean,
+    warnings?: boolean
 }
 
 export function format(modules: ExportMap, options?: FormatOptions) {
-    const option: FormatOptions = _.extend({ colors: true }, options);
+    const option: FormatOptions = _.extend({ colors: true, warnings: true }, options);
     const writer = new CodeBlockWriter({ newLine: '\n' });
-    const formatter = new Formatter(writer, option.colors ? new DefaultColors() : new NoColors());
+    const formatter = new Formatter(writer, option.colors ? new DefaultColors() : new NoColors(), option.warnings);
 
     formatter.dispatch(modules);
 
