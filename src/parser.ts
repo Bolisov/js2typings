@@ -135,8 +135,11 @@ function isReturnStatement(node: ESTree.Node): node is ESTree.ReturnStatement {
 }
 
 export class Type {
-    namespace: string;
-    name: string;
+    constructor(public namespace, public name, ...parameters: Type[]) {
+        this.parameters = parameters;
+    }
+
+    parameters: Type[] = [];
 }
 
 export class ExportBase {
@@ -158,7 +161,6 @@ export class Parameter {
 
 export class VariableExport extends ExportBase {
     types: Type[];
-    exported: boolean;
 }
 
 export class FunctionExport extends ExportBase {
@@ -233,6 +235,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
         }
 
     function getFunctionExport(node: ESTree.Function, comments: string) {
+        debugger;
         let { params, body } = node;
         let paramsFormatted = params.map(p => (p as ESTree.Identifier).name).join(', ');
         let exported = new FunctionExport();
@@ -241,13 +244,13 @@ export function parseCode(code: string, moduleName: string): ExportMap {
         let { param, example, return: returns } = _.groupBy(jsdoc.tags, tag => tag.title);
         let jsdocParams = _.keyBy(param, tag => tag.name) || {};
 
-        exported.result = [{ namespace: null, name: 'void' }];
+        exported.result = [new Type(null, 'void')];
 
         walk(body, {
             BlockStatement: (body) => {
                 for (let statement of body.body) {
                     if (isReturnStatement(statement)) {
-                        exported.result = [{ namespace: null, name: 'any' }];
+                        exported.result = [new Type(null, 'any')];
 
                         if (returns) {
                             const match = matchType(_.flatten(returns.map(r => parseJsDocType(r.type))));
@@ -270,7 +273,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 types = match.types;
                 theModule.errors.push(...match.errors.map(message => ({ message })));
             } else {
-                types = [{ namespace: null, name: 'any' }];
+                types = [new Type(null, 'any')];
                 exported.errors.push({ message: `parameter "${name}" type is not specified` });
             }
 
@@ -295,6 +298,11 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 let e = new LocalExport();
                 e.identifier = node.name;
                 return e;
+            },
+            ArrayExpression: (node) => {
+                const e = new VariableExport();
+                e.types = [new Type(null, 'Array', new Type(null, 'any'))];
+                return e;
             }
         });
     }
@@ -306,8 +314,8 @@ export function parseCode(code: string, moduleName: string): ExportMap {
             let namespace = part2 ? part1 : null;
             let name = part2 ? part2 : part1;
             name = typeMapping[name] || name;
-
-            return { namespace, name };
+            let parameters = [];
+            return { namespace, name, parameters };
         });
         return { types, errors };
     }
@@ -407,6 +415,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 for (const type of result) {
                     if (type.namespace == null && globalTypes.indexOf(type.name) >= 0) continue;
                     e.errors.push({ message: `Result type "${type.name}" was not found` });
+                    debugger;
                     type.name = 'any';
                     type.namespace = null;
                 }
@@ -415,7 +424,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
         else if (e instanceof LocalExport) {
             if (e.identifier === key) {
                 exportMap[e.identifier] = theModule.locals[e.identifier];
-                delete theModule.locals[e.identifier];                
+                delete theModule.locals[e.identifier];
             }
         }
     });

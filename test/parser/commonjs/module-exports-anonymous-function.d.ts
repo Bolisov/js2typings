@@ -1,4 +1,4 @@
 declare module "module-exports-anonymous-function" {
-    var moduleExportsAnonymousFunction: () => void;
-    export = moduleExportsAnonymousFunction;
+    function __module__(): void;
+    export = __module__;
 }

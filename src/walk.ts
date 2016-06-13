@@ -10,6 +10,7 @@ interface WalkPath<TResult> {
     MemberExpression?: (node: ESTree.MemberExpression) => TResult,
     BlockStatement?: (node: ESTree.BlockStatement) => TResult,
     CallExpression?: ((node: ESTree.CallExpression) => TResult),
+    ArrayExpression?: ((node: ESTree.ArrayExpression) => TResult),
 }
 
 var actualPath: string[] = [];

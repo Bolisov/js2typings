@@ -1,5 +1,4 @@
 declare module "module-exports-anonymous-array" {
-    var moduleExportsAnonymousArray: string[];
-
-    export = moduleExportsAnonymousArray;
+    var __module__: Array<any>;
+    export = __module__;
 }

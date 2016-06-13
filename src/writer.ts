@@ -18,13 +18,13 @@ class Formatter {
 
     public formatType(types: Type[]) {
         if (types)
-            return types.map(type => type.name).join(' | ');
+            return types.map(type => (type.parameters && type.parameters.length > 0) ? `${type.name}<${type.parameters.map(t => this.formatType([t])).join(', ')}>` : type.name).join(' | ');
         else
             return 'void';
     }
 
     public variable(name: string, part: VariableExport) {
-        this.writer.write(`${this.colors.identifier(name)}: ${this.formatType(part.types)};`);
+        this.writer.write(`var ${this.colors.identifier(name)}: ${this.formatType(part.types)};`);
     }
 
     jsdocComment(text: string[]) {
@@ -80,6 +80,11 @@ class Formatter {
     public dispatch(exports: ExportMap | LocalExport) {
         if (exports instanceof LocalExport)
             this.writer.writeLine(`export = ${exports.identifier};`);
+        else if (exports instanceof VariableExport) {
+            const tmpName = '__module__';
+            this.variable(tmpName, exports as any as VariableExport);
+            this.writer.writeLine(`export = ${tmpName};`);
+        }
         else {
             _.forEach(exports, (part, name) => {
 
@@ -99,10 +104,11 @@ class Formatter {
                     this.module(name, part);
                 // else if (part instanceof LocalExport)
                 //     this.writer.writeLine(`export ${part.identifier};`);
-                else
+                else {
                     console.error(this.colors.error(`Unexpected export: ` + part));
+                }
 
-                if (this.warnings && part.errors.length > 0) {
+                if (this.warnings && part.errors && part.errors.length > 0) {
                     for (const error of part.errors) {
                         this.writer.writeLine(this.colors.error('// WARN: ' + error.message));
                     }
