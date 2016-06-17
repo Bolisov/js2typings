@@ -326,7 +326,10 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                     }
                 })
             },
-            ObjectExpression: (node) => {
+            ObjectExpression: (node) => {                
+                const v = _.reduce(node.properties, (prev, current) => _.assign(prev, { [(current.key as ESTree.Identifier).name]: (current.value as ESTree.Literal).value }), {});
+                const e = new ConstExport(v);
+                /*
                 const e = new FunctionExport();
 
                 for (var property of node.properties) {
@@ -336,12 +339,11 @@ export function parseCode(code: string, moduleName: string): ExportMap {
 
                     e.prototype[name] = getExport(property.value, null);
                 }
-
+*/
                 return e;
             },
-            Literal: (node) => {
-                const e = new VariableExport();
-                e.types = [new Type(null, "any")];
+            Literal: (node) => {                
+                const e = new ConstExport(node.value);
                 return e;
             }
         });
@@ -442,17 +444,17 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 if (declaration.specifiers) {
                     declaration.specifiers.forEach(specifier => {
                         walk(specifier, {
-                            ExportSpecifier: (exportSpecifier) => {
+                            ExportSpecifier: (exportSpecifier) => {                                
                                 var e = new ReExport();
                                 e.source = (declaration.source as ESTree.Literal).value as string;
-                                e.id = exportSpecifier.exported.name;
-                                exportMap[exportSpecifier.local.name] = e;
+                                e.id = exportSpecifier.local.name;
+                                exportMap[exportSpecifier.exported.name] = e;
                             }
                         });
                     })
                 }
             },
-            ExportDefaultDeclaration: (declaration) => {
+            ExportDefaultDeclaration: (declaration) => {                    
                 let e = getExport(declaration.declaration, comments);
                 exportMap['default'] = e;
             }

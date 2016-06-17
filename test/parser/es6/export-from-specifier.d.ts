@@ -1,3 +1,3 @@
 declare module "export-from-specifier" {
-    export {foo} from "foo";
+    export { foo } from "foo";
 }

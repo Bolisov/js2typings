@@ -138,11 +138,13 @@ class Formatter {
     }
 
     public constant(name: string, part: ConstExport) {
+        const json = JSON.stringify(part.value, null, 4).replace(/\"([^(\")"]+)\":/g, "$1:");
+
         if (name == "default") {
-            this.writer.write(`export default ${JSON.stringify(part.value)};`);
+            this.writer.write(`export default ${json};`);
         }
         else {
-            this.writer.write(`export var name = ${JSON.stringify(part.value)};`);
+            this.writer.write(`export var name = ${json};`);
         }
     }
 
@@ -150,7 +152,7 @@ class Formatter {
         if (name == part.id) {
             this.writer.write(`export { ${name} } from "${part.source}";`);
         }
-        else {
+        else {            
             this.writer.write(`export { ${part.id} as ${name} } from "${part.source}";`);
         }
     }
