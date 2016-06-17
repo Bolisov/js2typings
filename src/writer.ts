@@ -1,7 +1,7 @@
 import CodeBlockWriter from "code-block-writer";
 import * as chalk from 'chalk';
 import * as _ from 'lodash';
-import { LocalExport, ReExport, ExportMap, ExportBase, Module, VariableExport, FunctionExport, Type } from './parser';
+import { ConstExport, LocalExport, ReExport, ExportMap, ExportBase, Module, VariableExport, FunctionExport, Type } from './parser';
 
 interface Colors {
     text(text: string): string;
@@ -120,6 +120,9 @@ class Formatter {
                 else if (part instanceof ReExport) {
                     this.reExport(name, part);
                 }
+                else if (part instanceof ConstExport) {
+                    this.constant(name, part);
+                }
                 else {
                     debugger;
                     console.error(this.colors.error(`Unexpected export: ` + part));
@@ -131,6 +134,15 @@ class Formatter {
                     }
                 }
             });
+        }
+    }
+
+    public constant(name: string, part: ConstExport) {
+        if (name == "default") {
+            this.writer.write(`export default ${JSON.stringify(part.value)};`);
+        }
+        else {
+            this.writer.write(`export var name = ${JSON.stringify(part.value)};`);
         }
     }
 

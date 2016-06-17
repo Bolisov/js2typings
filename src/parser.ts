@@ -150,7 +150,7 @@ export class ExportBase {
 
 export class ReExport extends ExportBase {
     id: string;
-    source: string;    
+    source: string;
 }
 
 export class LocalExport extends ExportBase {
@@ -163,6 +163,11 @@ export class Parameter {
     types: Type[];
 }
 
+export class ConstExport extends ExportBase {
+    constructor(public value: any) {
+        super();
+    }
+}
 
 export class VariableExport extends ExportBase {
     types: Type[];
@@ -446,6 +451,10 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                         });
                     })
                 }
+            },
+            ExportDefaultDeclaration: (declaration) => {
+                let e = getExport(declaration.declaration, comments);
+                exportMap['default'] = e;
             }
         });
     }
@@ -488,6 +497,9 @@ export function parseCode(code: string, moduleName: string): ExportMap {
             if (e.identifier === key) {
                 exportMap[e.identifier] = theModule.locals[e.identifier];
                 delete theModule.locals[e.identifier];
+            }
+            else if (theModule.locals[e.identifier] == null) {
+                exportMap[key] = new ConstExport({});
             }
         }
     });

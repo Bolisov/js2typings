@@ -15,6 +15,7 @@ interface WalkPath<TResult> {
     ObjectExpression?: (node: ESTree.ObjectExpression) => TResult,
     ExportNamedDeclaration?: (node: ESTree.ExportNamedDeclaration) => TResult,
     ExportSpecifier?: (node: ESTree.ExportSpecifier) => TResult,
+    ExportDefaultDeclaration?: (node: ESTree.ExportDefaultDeclaration) => TResult,
 }
 
 var actualPath: string[] = [];
