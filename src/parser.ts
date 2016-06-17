@@ -148,6 +148,11 @@ export class ExportBase {
 
 }
 
+export class ReExport extends ExportBase {
+    id: string;
+    source: string;    
+}
+
 export class LocalExport extends ExportBase {
     identifier: string
 }
@@ -417,16 +422,30 @@ export function parseCode(code: string, moduleName: string): ExportMap {
             },
             ExportNamedDeclaration: (declaration) => {
 
-                walk(declaration.declaration, {
-                    VariableDeclaration: (variableDeclaration) => {
-                        variableDeclaration.declarations.forEach((declarator) => {
-                            debugger;
-                            let id  = declarator.id as ESTree.Identifier;
-                            exportMap[id.name] = getExport(declarator.init, comments);
-                        });
-                    }
-                });
+                if (declaration.declaration) {
+                    walk(declaration.declaration, {
+                        VariableDeclaration: (variableDeclaration) => {
+                            variableDeclaration.declarations.forEach((declarator) => {
+                                debugger;
+                                let id = declarator.id as ESTree.Identifier;
+                                exportMap[id.name] = getExport(declarator.init, comments);
+                            });
+                        }
+                    });
+                }
 
+                if (declaration.specifiers) {
+                    declaration.specifiers.forEach(specifier => {
+                        walk(specifier, {
+                            ExportSpecifier: (exportSpecifier) => {
+                                var e = new ReExport();
+                                e.source = (declaration.source as ESTree.Literal).value as string;
+                                e.id = exportSpecifier.exported.name;
+                                exportMap[exportSpecifier.local.name] = e;
+                            }
+                        });
+                    })
+                }
             }
         });
     }

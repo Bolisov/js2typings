@@ -1,3 +1,3 @@
-declare module "export-from-default" {
+declare module "export-from-default" {    
     export { default } from "foo";
 }

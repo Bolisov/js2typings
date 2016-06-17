@@ -1,7 +1,7 @@
 import CodeBlockWriter from "code-block-writer";
 import * as chalk from 'chalk';
 import * as _ from 'lodash';
-import { LocalExport, ExportMap, ExportBase, Module, VariableExport, FunctionExport, Type } from './parser';
+import { LocalExport, ReExport, ExportMap, ExportBase, Module, VariableExport, FunctionExport, Type } from './parser';
 
 interface Colors {
     text(text: string): string;
@@ -117,7 +117,11 @@ class Formatter {
                     this.module(name, part);
                 // else if (part instanceof LocalExport)
                 //     this.writer.writeLine(`export ${part.identifier};`);
+                else if (part instanceof ReExport) {
+                    this.reExport(name, part);
+                }
                 else {
+                    debugger;
                     console.error(this.colors.error(`Unexpected export: ` + part));
                 }
 
@@ -127,6 +131,15 @@ class Formatter {
                     }
                 }
             });
+        }
+    }
+
+    public reExport(name: string, part: ReExport) {
+        if (name == part.id) {
+            this.writer.write(`export { ${name} } from "${part.source}";`);
+        }
+        else {
+            this.writer.write(`export { ${part.id} as ${name} } from "${part.source}";`);
         }
     }
 
@@ -149,8 +162,10 @@ class Formatter {
                 }
                 else if (part instanceof Module)
                     this.module(name, part);
-                else
+                else {
+                    debugger;
                     console.error(this.colors.error(`Unexpected export: ` + part));
+                }
             });
             this.dispatch(module.exports);
         });
