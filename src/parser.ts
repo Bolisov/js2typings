@@ -226,7 +226,8 @@ export function parseCode(code: string, moduleName: string): ExportMap {
     const globalTypes = ['string', 'String', 'object', 'number', 'Function', 'any', 'Object', 'void'];
     const theModule = new Module();
     const exportMap = new ExportMap();
-    const program = esprima.parse(code, { comment: true, attachComment: true });
+    const esprimaConfig = { comment: true, attachComment: true, sourceType: 'module' };
+    const program = esprima.parse(code, esprimaConfig);
     const typeMapping:
         {
             [jsType: string]: string
@@ -327,6 +328,11 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 }
 
                 return e;
+            },
+            Literal: (node) => {
+                const e = new VariableExport();
+                e.types = [new Type(null, "any")];
+                return e;
             }
         });
     }
@@ -408,6 +414,19 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                         }
                     }
                 });
+            },
+            ExportNamedDeclaration: (declaration) => {
+
+                walk(declaration.declaration, {
+                    VariableDeclaration: (variableDeclaration) => {
+                        variableDeclaration.declarations.forEach((declarator) => {
+                            debugger;
+                            let id  = declarator.id as ESTree.Identifier;
+                            exportMap[id.name] = getExport(declarator.init, comments);
+                        });
+                    }
+                });
+
             }
         });
     }

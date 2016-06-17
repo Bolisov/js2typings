@@ -13,6 +13,7 @@ interface WalkPath<TResult> {
     ArrayExpression?: ((node: ESTree.ArrayExpression) => TResult),
     NewExpression?: (node: ESTree.NewExpression) => TResult,
     ObjectExpression?: (node: ESTree.ObjectExpression) => TResult,
+    ExportNamedDeclaration?: (node: ESTree.ExportNamedDeclaration) => TResult,
 }
 
 var actualPath: string[] = [];
