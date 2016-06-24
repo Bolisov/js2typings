@@ -1,3 +1,3 @@
 declare module "export-let-number" {
-    export let foo: number;
+    export var foo: number;
 }

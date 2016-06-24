@@ -1,3 +1,3 @@
 declare module "export-function-declaration" {
-    export function foo();
+    export function foo(): void;
 }

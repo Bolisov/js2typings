@@ -4,5 +4,7 @@ declare module "module-exports-object" {
         public sayHelloInSpanish(): any;
     }
 
-    export = new __module__;
+    var __module__static__: __module__;
+
+    export = __module__static__;
 }

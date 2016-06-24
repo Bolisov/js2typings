@@ -1,3 +1,3 @@
-declare module "export-const-number" {
+declare module "export-default-array" {
     export default [];
 }

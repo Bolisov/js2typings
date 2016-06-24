@@ -9,20 +9,10 @@ generate(process.argv[2], process.argv[3]);
 
 function generate(filename: string, outFile?: string) {
 
-    
-
     let buffer = fs.readFileSync(filename);
     let modules = parseCode(buffer.toString(), "yeoman-test");
-
+    
     let typings = format(modules);
-
-
-
-    //let program = esprima.parse(buffer.toString(), { comment: true, attachComment: true });
-
-    //let typings = writeTypings(modules);
-
-    //console.log(typings);
 
     if (outFile)
         fs.writeFileSync(outFile, typings);

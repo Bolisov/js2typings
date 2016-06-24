@@ -1,7 +1,7 @@
 import CodeBlockWriter from "code-block-writer";
 import * as chalk from 'chalk';
 import * as _ from 'lodash';
-import { ConstExport, LocalExport, ReExport, ExportMap, ExportBase, Module, VariableExport, FunctionExport, Type } from './parser';
+import { ObjectDeclaration, ConstDeclaration, ClassDeclaration, Identifier, NewInstanceDeclaration, ImportDeclaration, BaseDeclaration, ModuleDeclaration, VariableDeclaration, FunctionDeclaration, Type, DeclarationType } from './parser';
 
 interface Colors {
     text(text: string): string;
@@ -11,48 +11,144 @@ interface Colors {
     warning(text: string): string;
 }
 
-class Formatter {
+interface Writers {
+    variable?(name: string, part: VariableDeclaration);
+    class?(name: string, part: ClassDeclaration);
+    function?(name: string, part: FunctionDeclaration);
+    constant?(name: string, part: ConstDeclaration);
+    import?(name: string, part: ImportDeclaration);
+    module?(name: string, part: ModuleDeclaration);
+    identifier?(name: string, part: Identifier);
+    object?(name: string, part: ObjectDeclaration);
+}
+
+function guestType(value: any) {
+    if (typeof (value) === "number") {
+        return 'number';
+    }
+    else if (typeof (value) === "string") {
+        return 'string';
+    }
+    return "any";
+}
+
+function jsdocComment(writer, colors, text: string[]) {
+    writer.writeLine(colors.comment('/**' + _.flatten(text.map(x => x.split(/\r\n|\r|\n/))).map(line => '\n * ' + line).join('') + '\n */'));
+}
+
+function formatType(types: Type[]) {
+    if (types)
+        return types.map(type => (type.parameters && type.parameters.length > 0) ? `${type.name}<${type.parameters.map(t => this.formatType([t])).join(', ')}>` : type.name).join(' | ');
+    else
+        return 'void';
+}
+
+class RootFormatter implements Writers {
+    private moduleMembers = new ModuleMembersFormatter(this.writer, this.colors, this.warnings);
+    private moduleExports = new ModuleExportsFormatter(this.writer, this.colors, this.warnings);
+
     constructor(private writer: CodeBlockWriter, private colors: Colors, private warnings: boolean) {
 
     }
 
-    public formatType(types: Type[]) {
-        if (types)
-            return types.map(type => (type.parameters && type.parameters.length > 0) ? `${type.name}<${type.parameters.map(t => this.formatType([t])).join(', ')}>` : type.name).join(' | ');
-        else
-            return 'void';
+    public module(name: string, part: ModuleDeclaration) {
+
+        this.writer.write(`declare module "${name}"`);
+        this.writer.block(() => {
+
+            _.forEach(part.items, (part, name) => {
+
+                this.writer.writeLine('\n');
+
+                let routine: Function = this.moduleMembers[DeclarationType[part.type]];
+
+                if (!routine)
+                    throw Error(`Declaration type not supported: ${DeclarationType[part.type]}`);
+
+                routine.apply(this.moduleMembers, [name, part]);
+
+                if (this.warnings && part.errors && part.errors.length > 0) {
+                    for (const error of part.errors) {
+                        this.writer.writeLine(this.colors.error('// WARN: ' + error.message));
+                    }
+                }
+            });
+
+            if (part.exports) {
+                let formatter: Function = this.moduleExports[DeclarationType[part.exports.type]];
+
+                if (!formatter)
+                    throw Error(`Declaration type not supported: ${DeclarationType[part.exports.type]}`);
+
+                formatter.apply(this.moduleExports, [name, part.exports]);
+            };
+        });
+    }
+}
+
+class ObjectMembersFormatter implements Writers {
+
+    constructor(protected writer: CodeBlockWriter, protected colors: Colors, protected warnings: boolean) {
+
     }
 
-    public variable(name: string, part: VariableExport) {
-        this.writer.write(`var ${this.colors.identifier(name)}: ${this.formatType(part.types)};`);
+    public variable(name: string, part: VariableDeclaration) {
+        this.writer.writeLine(`${name}: any`);
     }
 
-    jsdocComment(text: string[]) {
-        this.writer.writeLine(this.colors.comment('/**' + _.flatten(text.map(x => x.split(/\r\n|\r|\n/))).map(line => '\n * ' + line).join('') + '\n */'));
+    public function(name: string, part: FunctionDeclaration) {
+        this.writer.write(`${name}: function() : any`);
+        this.writer.block(() => { });
     }
 
-    public class(name: string, part: FunctionExport, exported: boolean) {
+    public constant(name: string, part: ConstDeclaration) {
+        this.writer.writeLine(`${name}: ${JSON.stringify(part.value)}`);
+    }
+
+}
+
+class ModuleMembersFormatter implements Writers {
+
+    private classMembers = new ObjectMembersFormatter(this.writer, this.colors, this.warnings);
+
+    constructor(protected writer: CodeBlockWriter, protected colors: Colors, protected warnings: boolean) {
+
+    }
+
+    public variable(name: string, part: VariableDeclaration) {
+        if (part.exported)
+            this.writer.write('export ');
+
+        if (name !== 'default') {
+            this.writer.write(`var ${this.colors.identifier(name)}: ${formatType(part.types)};`);
+        }
+        else {
+            this.writer.write(`${this.colors.identifier(name)} {};`);
+        }
+    }
+
+    public class(name: string, part: ClassDeclaration) {
 
         this.writer
-            .write(`${exported ? 'export' : ''} class ${this.colors.identifier(name)}`)
+            .write(`${part.exported ? 'export ' : ''}` + (name === 'default' ? 'default class' : `class ${this.colors.identifier(name)}`))
             .block(() => {
-                if (part.params.length > 0) {
-                    const params = part.params.map(param => `${this.colors.identifier(param.name)}: ${this.formatType(param.types)}`).join(', ');
+                if (part.ctor != null && part.ctor.params.length > 0) {
+                    const params = part.ctor.params.map(param => `${this.colors.identifier(param.name)}: ${formatType(param.types)}`).join(', ');
                     this.writer.writeLine(`constructor (${params});`);
                 }
 
-                _.forEach(part.prototype, (member, name) => {
-                    if (member instanceof VariableExport)
+                _.forEach(part.members, (member, name) => {
+                    if (member instanceof VariableDeclaration)
                         this.variable(name, member);
-                    else if (member instanceof FunctionExport) {
-                        const params = member.params.map(param => `${this.colors.identifier(param.name)}: ${this.formatType(param.types)}`).join(', ');
-                        this.writer.writeLine(`public ${this.colors.identifier(name)} (${params}) : ${this.formatType(member.result)};`);
+                    else if (member instanceof FunctionDeclaration) {
+                        const params = member.params.map(param => `${this.colors.identifier(param.name)}: ${formatType(param.types)}`).join(', ');
+                        this.writer.writeLine(`public ${this.colors.identifier(name)} (${params}) : ${formatType(member.result)};`);
                     }
                 });
             });
     }
 
-    public function(name: string, part: FunctionExport) {
+    public function(name: string, part: FunctionDeclaration) {
 
         const paramsWithDescriptions = _.filter(part.params, param => param.description);
         const comments = [];
@@ -69,120 +165,122 @@ class Formatter {
         }
 
         if (comments.length > 0) {
-            this.jsdocComment(comments);
+            jsdocComment(this.writer, this.colors, comments);
         }
 
-        const params = part.params.map(param => `${this.colors.identifier(param.name)}: ${this.formatType(param.types)}`).join(', ');
+        const params = part.params.map(param => `${this.colors.identifier(param.name)}: ${formatType(param.types)}`).join(', ');
 
-        this.writer.writeLine(`function ${this.colors.identifier(name)} (${params}) : ${this.formatType(part.result)};`);
+        if (name === 'default')
+            this.writer.writeLine(`${part.exported ? 'export ' : ''}${this.colors.identifier(name)} function (${params}) : ${formatType(part.result)};`);
+        else
+            this.writer.writeLine(`${part.exported ? 'export ' : ''}function ${this.colors.identifier(name)} (${params}) : ${formatType(part.result)};`);
     }
 
-    public dispatch(exports: ExportMap | LocalExport) {
-        if (exports instanceof LocalExport)
-            this.writer.writeLine(`export = ${exports.identifier};`);
-        else if (exports instanceof VariableExport) {
-            const tmpName = '__module__';
-            this.variable(tmpName, exports as any as VariableExport);
-            this.writer.writeLine(`export = ${tmpName};`);
-        }
-        else if (exports instanceof FunctionExport) {
-            const tmpName = '__module__';
-
-            if (_.isEmpty((exports as any as FunctionExport).prototype)) {
-                this.function(tmpName, exports as any as FunctionExport);
-                this.writer.writeLine(`export = ${tmpName};`);
-            }
-            else {
-                this.class(tmpName, exports as any as FunctionExport, false);
-                this.writer.writeLine(`export = new ${tmpName};`);
-            }
-
-        }
-        else {
-            _.forEach(exports, (part, name) => {
-
-                this.writer.writeLine('\n');
-
-                if (part instanceof VariableExport)
-                    this.variable(name, part);
-                else if (part instanceof FunctionExport) {
-                    if (_.isEmpty(part.prototype)) {
-                        this.function(name, part);
-                    }
-                    else {
-                        this.class(name, part, true);
-                    }
-                }
-                else if (part instanceof Module)
-                    this.module(name, part);
-                // else if (part instanceof LocalExport)
-                //     this.writer.writeLine(`export ${part.identifier};`);
-                else if (part instanceof ReExport) {
-                    this.reExport(name, part);
-                }
-                else if (part instanceof ConstExport) {
-                    this.constant(name, part);
-                }
-                else {
-                    debugger;
-                    console.error(this.colors.error(`Unexpected export: ` + part));
-                }
-
-                if (this.warnings && part.errors && part.errors.length > 0) {
-                    for (const error of part.errors) {
-                        this.writer.writeLine(this.colors.error('// WARN: ' + error.message));
-                    }
-                }
-            });
-        }
-    }
-
-    public constant(name: string, part: ConstExport) {
+    public constant(name: string, part: ConstDeclaration) {
         const json = JSON.stringify(part.value, null, 4).replace(/\"([^(\")"]+)\":/g, "$1:");
 
         if (name == "default") {
             this.writer.write(`export default ${json};`);
         }
         else {
-            this.writer.write(`export var name = ${json};`);
+            this.writer.write(`export var ${name}: ${guestType(part.value)};`);
         }
     }
 
-    public reExport(name: string, part: ReExport) {
-        if (name == part.id) {
-            this.writer.write(`export { ${name} } from "${part.source}";`);
+    public import(name: string, part: ImportDeclaration) {
+        if (name == part.local) {
+            if (name == "*") {
+                this.writer.write(`${part.exported ? 'export ' : ''}${name} from "${part.module}";`);
+            }
+            else {
+                this.writer.write(`${part.exported ? 'export ' : ''} { ${name} } from "${part.module}";`);
+            }
         }
-        else {            
-            this.writer.write(`export { ${part.id} as ${name} } from "${part.source}";`);
+        else {
+            this.writer.write(`${part.exported ? 'export ' : ''} { ${part.local} as ${name} } from "${part.module}";`);
         }
     }
 
-    public module(name: string, module: Module) {
-        this.writer.write(`declare module "${name}"`);
-        this.writer.block(() => {
+    public identifier(name: string, part: Identifier) {
+        if (name === 'default') {
+            this.writer.writeLine(`${part.exported ? 'export ' : ''}${name} ${part.localName};`);
+        }
+        else {
+            this.writer.writeLine(`${part.exported ? 'export ' : ''}${name}  = ${part.localName};`);
+        }
+    }
 
-            _.forEach(module.imports, (path, name) => {
-                this.writer.writeLine(`import * as ${this.colors.identifier(name)} from "${path}"`);
-            });
+    public object(name: string, part: ObjectDeclaration) {
 
-            _.forEach(module.locals, (part, name) => {
-                if (part instanceof VariableExport)
-                    this.variable(name, part);
-                else if (part instanceof FunctionExport) {
-                    if (_.isEmpty(part.prototype))
-                        this.function(name, part);
-                    else
-                        this.class(name, part, false);
-                }
-                else if (part instanceof Module)
-                    this.module(name, part);
-                else {
-                    debugger;
-                    console.error(this.colors.error(`Unexpected export: ` + part));
-                }
-            });
-            this.dispatch(module.exports);
-        });
+        if (part.exported)
+            this.writer.write('export ');
+
+        if (name === 'default') {
+            this.writer
+                .write('default ')
+                .block(() => {
+                    let first = false;
+                    _.forEach(part.members, (member, name) => {
+
+                        if (first) {
+                            this.writer.writeLine(',');
+                        }
+
+                        let routine: Function = this.classMembers[DeclarationType[member.type]];
+
+                        if (!routine)
+                            throw Error(`Declaration type not supported: ${DeclarationType[member.type]}`);
+
+                        routine.apply(this.classMembers, [name, member]);
+
+                        first = false;
+                    });
+                });
+        }
+        else {
+            this.writer.write(`var ${name}: any`);
+        }
+    }
+}
+
+class ModuleExportsFormatter extends ModuleMembersFormatter implements Writers {
+
+    public variable(name: string, part: VariableDeclaration) {
+        const tmpName = '__module__';
+        super.variable(tmpName, exports as any as VariableDeclaration);
+        this.writer.writeLine(`export = ${tmpName};`);
+    }
+
+    public newInstance(name: string, part: NewInstanceDeclaration) {
+        this.writer.writeLine(`export = new ${formatType([part.instanceType])} (${part.params.map(x => JSON.stringify(x)).join(', ')});`);
+    }
+
+    public identifier(name: string, part: Identifier) {
+        this.writer.writeLine(`export = ${part.localName};`);
+    }
+
+    public function(name: string, part: FunctionDeclaration) {
+        const tmpName = '__module__';
+        super.function(tmpName, part);
+        this.writer.writeLine(`export = ${tmpName};`);
+    }
+
+    public constant(name: string, part: ConstDeclaration) {
+        const json = JSON.stringify(part.value, null, 4).replace(/\"([^(\")"]+)\":/g, "$1:");
+        this.writer.write(`export = ${json};`);
+    }
+
+    public object(name: string, part: ObjectDeclaration) {
+        let typeName = '__module__';
+        let localName = '__module__static__';
+        let classDeclaration = new ClassDeclaration();
+
+        classDeclaration.members = part.members;
+
+        super.class(typeName, classDeclaration);
+        super.variable(localName, new VariableDeclaration([new Type(null, typeName)]));
+
+        this.identifier(null, new Identifier(localName));
     }
 }
 
@@ -207,12 +305,12 @@ interface FormatOptions {
     warnings?: boolean
 }
 
-export function format(modules: ExportMap, options?: FormatOptions) {
+export function format(modules: { [name: string]: ModuleDeclaration }, options?: FormatOptions) {
     const option: FormatOptions = _.extend({ colors: true, warnings: true }, options);
     const writer = new CodeBlockWriter({ newLine: '\n' });
-    const formatter = new Formatter(writer, option.colors ? new DefaultColors() : new NoColors(), option.warnings);
+    const root = new RootFormatter(writer, option.colors ? new DefaultColors() : new NoColors(), option.warnings);
 
-    formatter.dispatch(modules);
+    _.forEach(modules, (module, name) => root.module(name, module));
 
     return writer.toString();
 }

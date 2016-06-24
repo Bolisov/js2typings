@@ -1,3 +1,3 @@
 declare module "module-exports-named-function" {
-    function hello(name: any): void;
+    export function hello(name: any): void;
 }

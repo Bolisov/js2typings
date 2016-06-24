@@ -142,19 +142,13 @@ export class Type {
     parameters: Type[] = [];
 }
 
-export class ExportBase {
+export class BaseDeclaration {
+    constructor(public type: DeclarationType) { }
+
+    public exported: boolean;
+
     public description: string;
     public errors: ExportError[] = [];
-
-}
-
-export class ReExport extends ExportBase {
-    id: string;
-    source: string;
-}
-
-export class LocalExport extends ExportBase {
-    identifier: string
 }
 
 export class Parameter {
@@ -163,46 +157,91 @@ export class Parameter {
     types: Type[];
 }
 
-export class ConstExport extends ExportBase {
-    constructor(public value: any) {
-        super();
+export enum DeclarationType {
+    variable,
+    constant,
+    import,
+    class,
+    function,
+    module,
+    newInstance,
+    identifier,
+    object
+}
+
+export class VariableDeclaration extends BaseDeclaration {
+    constructor(public types: Type[]) {
+        super(DeclarationType.variable);
     }
 }
 
-export class VariableExport extends ExportBase {
-    types: Type[];
+export class Identifier extends BaseDeclaration {
+    constructor(public localName: string) {
+        super(DeclarationType.identifier);
+    }
 }
 
-export class FunctionExport extends ExportBase {
+export class ConstDeclaration extends BaseDeclaration {
+    constructor(public value: any) {
+        super(DeclarationType.constant);
+    }
+}
+
+export class ImportDeclaration extends BaseDeclaration {
+    constructor(public module: string, public local?: string) {
+        super(DeclarationType.import);
+    }
+}
+
+export class NewInstanceDeclaration extends BaseDeclaration {
+    constructor(public instanceType: Type, public params: any[] = []) {
+        super(DeclarationType.newInstance);
+    }
+}
+
+export class ObjectDeclaration extends BaseDeclaration {
+    constructor(public members: { [name: string]: FunctionDeclaration | VariableDeclaration }) {
+        super(DeclarationType.object);
+    }
+}
+
+export class ClassDeclaration extends BaseDeclaration {
+
+    constructor() {
+        super(DeclarationType.class);
+    }
+
+    ctor: FunctionDeclaration;
+
+    members: {
+        [name: string]: FunctionDeclaration | VariableDeclaration;
+    } = {}
+}
+
+export class FunctionDeclaration extends BaseDeclaration {
+    constructor() {
+        super(DeclarationType.function);
+    }
+
     params: Parameter[] = [];
     result: Type[];
-    prototype: ExportMap = {};
-
 }
 
 export class ExportError {
     message: string
 }
 
-export class ExportMap {
-    [key: string]: ExportBase
-}
-
-export class Module extends ExportBase {
+export class ModuleDeclaration extends BaseDeclaration {
 
     constructor() {
-        super();
+        super(DeclarationType.module);
     }
 
-    public locals: {
-        [identifier: string]: ExportBase
+    items: {
+        [name: string]: BaseDeclaration
     } = {};
 
-    public imports: {
-        [key: string]: string
-    } = {};
-
-    public exports: LocalExport | ExportMap
+    exports: FunctionDeclaration | VariableDeclaration | ClassDeclaration;
 }
 
 function parseJsDocType(type: Doctrine.Type): string[] {
@@ -231,11 +270,10 @@ function getObjectPath(node: ESTree.Node) {
     });
 }
 
-export function parseCode(code: string, moduleName: string): ExportMap {
-
+export function parseCode(code: string, moduleName: string): { [name: string]: ModuleDeclaration } {
     const globalTypes = ['string', 'String', 'object', 'number', 'Function', 'any', 'Object', 'void'];
-    const theModule = new Module();
-    const exportMap = new ExportMap();
+    const theModule = new ModuleDeclaration();
+    const exportMap = theModule.items;
     const esprimaConfig = { comment: true, attachComment: true, sourceType: 'module' };
     const program = esprima.parse(code, esprimaConfig);
     const typeMapping:
@@ -249,7 +287,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
 
         let { params, body } = node;
         let paramsFormatted = params.map(p => (p as ESTree.Identifier).name).join(', ');
-        let exported = new FunctionExport();
+        let exported = new FunctionDeclaration();
 
         let jsdoc = (comments && doctrine.parse(comments, { unwrap: true }) || { tags: [] }) as Doctrine.AST;
         let { param, example, return: returns } = _.groupBy(jsdoc.tags, tag => tag.title);
@@ -301,50 +339,37 @@ export function parseCode(code: string, moduleName: string): ExportMap {
         return exported;
     }
 
-    function getExport(node: ESTree.Expression, comments: string): ExportBase {
 
-        return walk<ExportBase>(node, {
+    function getExport(node: ESTree.Expression, comments: string): BaseDeclaration {
+
+        return walk<BaseDeclaration>(node, {
             FunctionExpression: (node) => getFunctionExport(node, comments),
-            Identifier: (node) => {
-                let e = new LocalExport();
-                e.identifier = node.name;
-                return e;
-            },
-            ArrayExpression: (node) => {
-                const e = new VariableExport();
-                e.types = [new Type(null, 'Array', new Type(null, 'any'))];
-                return e;
-            },
+            Identifier: (node) => new Identifier(node.name),
+            ArrayExpression: (node) => new ConstDeclaration(node.elements.map(e => (e as ESTree.Literal).value)),
             NewExpression: (node) => {
                 const { callee } = node;
-
                 return walk(callee, {
-                    Identifier: (node) => {
-                        const e = new VariableExport();
-                        e.types = [new Type(null, node.name)];
-                        return e;
-                    }
+                    Identifier: (node) => new NewInstanceDeclaration(new Type(null, node.name))
                 })
             },
-            ObjectExpression: (node) => {                
-                const v = _.reduce(node.properties, (prev, current) => _.assign(prev, { [(current.key as ESTree.Identifier).name]: (current.value as ESTree.Literal).value }), {});
-                const e = new ConstExport(v);
-                /*
-                const e = new FunctionExport();
-
-                for (var property of node.properties) {
-                    const name = walk<string>(property.key, {
-                        Identifier: (identifier) => identifier.name
-                    });
-
-                    e.prototype[name] = getExport(property.value, null);
-                }
-*/
+            ObjectExpression: (node) => {
+                const properties: any = _.reduce(node.properties, (prev, current) => _.assign(prev, { [(current.key as ESTree.Identifier).name]: getExport(current.value, null) }), {});
+                const e = new ObjectDeclaration(properties);
                 return e;
             },
-            Literal: (node) => {                
-                const e = new ConstExport(node.value);
+            Literal: (node) => {
+                const e = new ConstDeclaration(node.value);
                 return e;
+            },
+            ClassDeclaration: (node) => {
+                let e = new ClassDeclaration();
+                return e;
+            },
+            BinaryExpression: (expression) => {
+                return new ConstDeclaration({});
+            },
+            FunctionDeclaration: (declaration) => {
+                return getFunctionExport(declaration, comments);
             }
         });
     }
@@ -372,7 +397,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                         Identifier: (id) =>
                             walk(declarator.init, {
                                 FunctionExpression: (functionExpression) => {
-                                    theModule.locals[id.name] = getExport(functionExpression, comments);
+                                    theModule.items[id.name] = getFunctionExport(functionExpression, comments);
                                 },
                                 CallExpression: (init) =>
                                     walk(init.callee, {
@@ -382,7 +407,9 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                                                 const argument: ESTree.Literal = init.arguments[0];
 
                                                 walk(argument, {
-                                                    Literal: (argument) => { theModule.imports[id.name] = argument.value as string; }
+                                                    Literal: (argument) => {
+                                                        theModule.items[id.name] = new ImportDeclaration(argument.value as string);
+                                                    }
                                                 });
                                             }
                                         }
@@ -391,7 +418,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                     })
                 ),
             FunctionDeclaration: (node) => {
-                theModule.locals[node.id.name] = getFunctionExport(node, comments);
+                theModule.items[node.id.name] = getFunctionExport(node, comments);
             },
             ExpressionStatement: (node) => {
                 const expression = node.expression;
@@ -412,14 +439,30 @@ export function parseCode(code: string, moduleName: string): ExportMap {
 
                         if (assignment.object === 'module' && assignment.property === "exports") {
                             /* export complete object */
-                            theModule.exports = getExport(right, comments) as LocalExport;
+                            theModule.exports = getExport(right, comments) as any;
                         }
                         else if (assignment.object === 'exports' || assignment.object === 'module.exports') {
-                            exportMap[assignment.property] = getExport(right, comments);
+                            let lookup = getExport(right, comments) as any;
+
+                            if (!(lookup instanceof Identifier)) {
+                                exportMap[assignment.property] = lookup;
+                            }
+
+                            exportMap[assignment.property].exported = true;
                         }
                         else if (assignment.object.match(/\.prototype$/)) {
-                            let local = theModule.locals[assignment.object.replace(/\.prototype$/, '')] as FunctionExport;
-                            local.prototype[assignment.property] = getExport(right, comments);
+                            let className = assignment.object.replace(/\.prototype$/, '');
+
+                            if (theModule.items[className] instanceof FunctionDeclaration) {
+                                let classDeclaration = new ClassDeclaration();
+                                classDeclaration.ctor = theModule.items[className] as FunctionDeclaration;
+                                theModule.items[className] = classDeclaration;
+                            }
+
+                            if (theModule.items[className] instanceof ClassDeclaration) {
+                                let classDeclaration = theModule.items[className] as ClassDeclaration;
+                                classDeclaration.members[assignment.property] = getExport(right, comments) as any;
+                            }
                         }
                         else {
                             console.log(`Assignment skipped ${assignment.object}.${assignment.property}`);
@@ -433,10 +476,22 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                     walk(declaration.declaration, {
                         VariableDeclaration: (variableDeclaration) => {
                             variableDeclaration.declarations.forEach((declarator) => {
-                                debugger;
+
                                 let id = declarator.id as ESTree.Identifier;
-                                exportMap[id.name] = getExport(declarator.init, comments);
+
+                                if (declarator.init)
+                                    exportMap[id.name] = getExport(declarator.init, comments) as any;
+                                else
+                                    exportMap[id.name] = new VariableDeclaration([new Type(null, 'any')]);
+
+                                exportMap[id.name].exported = true;
+
                             });
+                        },
+                        FunctionDeclaration: (functionDeclaration) => {
+                            debugger;
+                            exportMap[functionDeclaration.id.name] = getFunctionExport(functionDeclaration, comments);
+                            exportMap[functionDeclaration.id.name].exported = true;
                         }
                     });
                 }
@@ -444,26 +499,39 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 if (declaration.specifiers) {
                     declaration.specifiers.forEach(specifier => {
                         walk(specifier, {
-                            ExportSpecifier: (exportSpecifier) => {                                
-                                var e = new ReExport();
-                                e.source = (declaration.source as ESTree.Literal).value as string;
-                                e.id = exportSpecifier.local.name;
-                                exportMap[exportSpecifier.exported.name] = e;
+                            ExportSpecifier: (exportSpecifier) => {
+                                if (declaration.source) {
+                                    let e = new ImportDeclaration((declaration.source as ESTree.Literal).value as string, exportSpecifier.local.name);
+                                    e.exported = true;
+
+                                    exportMap[exportSpecifier.exported.name] = e;
+                                }
+                                else {
+                                    let e = new VariableDeclaration([new Type(null, "any")]);
+                                    e.exported = true;
+                                    exportMap[exportSpecifier.exported.name] = e;
+                                }
                             }
                         });
                     })
                 }
             },
-            ExportDefaultDeclaration: (declaration) => {                    
+            ExportDefaultDeclaration: (declaration) => {
                 let e = getExport(declaration.declaration, comments);
-                exportMap['default'] = e;
+                e.exported = true;
+                exportMap['default'] = e as any;
+            },
+            ExportAllDeclaration: (declaration) => {
+                let e = new ImportDeclaration(declaration.source.value as string, "*")
+                e.exported = true;
+                exportMap['*'] = e as any;
             }
         });
     }
 
     _.map(exportMap, (e, key) => {
 
-        if (e instanceof VariableExport) {
+        if (e instanceof VariableDeclaration) {
             const { types } = e;
 
             for (const type of types) {
@@ -473,7 +541,7 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 type.namespace = null;
             }
         }
-        else if (e instanceof FunctionExport) {
+        else if (e instanceof FunctionDeclaration) {
             const { params, result } = e;
 
             for (const param of params) {
@@ -495,19 +563,21 @@ export function parseCode(code: string, moduleName: string): ExportMap {
                 }
             }
         }
-        else if (e instanceof LocalExport) {
-            if (e.identifier === key) {
-                exportMap[e.identifier] = theModule.locals[e.identifier];
-                delete theModule.locals[e.identifier];
-            }
-            else if (theModule.locals[e.identifier] == null) {
-                exportMap[key] = new ConstExport({});
+        else if (e instanceof Identifier) {
+            if (!exportMap[e.localName]) {
+                exportMap[key] = new ConstDeclaration({});
             }
         }
+        // else if (e instanceof LocalExport) {
+        //     if (e.identifier === key) {
+        //         exportMap[e.identifier] = theModule.locals[e.identifier];
+        //         delete theModule.locals[e.identifier];
+        //     }
+        //     else if (theModule.locals[e.identifier] == null) {
+        //         exportMap[key] = new ConstDeclaration({});
+        //     }
+        // }
     });
-
-    if (!theModule.exports)
-        theModule.exports = exportMap;
 
     return { [moduleName]: theModule };
 }

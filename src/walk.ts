@@ -16,6 +16,9 @@ interface WalkPath<TResult> {
     ExportNamedDeclaration?: (node: ESTree.ExportNamedDeclaration) => TResult,
     ExportSpecifier?: (node: ESTree.ExportSpecifier) => TResult,
     ExportDefaultDeclaration?: (node: ESTree.ExportDefaultDeclaration) => TResult,
+    ClassDeclaration?: (node: ESTree.ClassDeclaration) => TResult,
+    BinaryExpression?: (node: ESTree.BinaryExpression) => TResult,
+    ExportAllDeclaration?: (node: ESTree.ExportAllDeclaration) => TResult,
 }
 
 var actualPath: string[] = [];
@@ -30,7 +33,7 @@ export function walk<TResult>(node: ESTree.Node, path: WalkPath<TResult>) {
         if (step)
             return step(node);
         else
-            throw `Unexpected node type: ${node.type}. Actual path is: ${actualPath.join(' -> ')}`;
+            throw Error(`Unexpected node type: ${node.type}. Actual path is: ${actualPath.join(' -> ')}`);
     }
     finally {
         actualPath.pop();

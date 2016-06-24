@@ -1,3 +1,2 @@
-declare module "export-named-empty" {
-    export {};
+declare module "export-named-empty" {    
 }

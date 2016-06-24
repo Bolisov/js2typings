@@ -1,3 +1,3 @@
 declare module "export-const-number" {
-    var foo: number;
+    export var foo: number;
 }

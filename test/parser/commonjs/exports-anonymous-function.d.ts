@@ -1,3 +1,3 @@
 declare module "exports-anonymous-function" {
-    function sayHelloInEnglish(): void;
+    export function sayHelloInEnglish(): void;
 }

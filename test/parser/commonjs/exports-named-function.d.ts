@@ -5,5 +5,5 @@ declare module "exports-named-function" {
      *
      * @param name client name
      */
-    function hello (name: String) : void;
+    export function hello (name: String) : void;
 }
