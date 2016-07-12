@@ -8,7 +8,7 @@
             "program": "${workspaceRoot}/lib/src/main.js",
             "stopOnEntry": false,
             "args": [
-                "test/parser/es6/export-const-object.js"
+                "test/parser/jsdoc/tags/using @typedef tag.js"
             ],
             "cwd": "${workspaceRoot}",
             "preLaunchTask": "compile",

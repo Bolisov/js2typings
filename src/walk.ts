@@ -19,6 +19,7 @@ interface WalkPath<TResult> {
     ClassDeclaration?: (node: ESTree.ClassDeclaration) => TResult,
     BinaryExpression?: (node: ESTree.BinaryExpression) => TResult,
     ExportAllDeclaration?: (node: ESTree.ExportAllDeclaration) => TResult,
+    ThisExpression?: (node: ESTree.ThisExpression) => TResult,
 }
 
 var actualPath: string[] = [];

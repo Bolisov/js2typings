@@ -1,7 +1,7 @@
 import CodeBlockWriter from "code-block-writer";
 import * as chalk from 'chalk';
 import * as _ from 'lodash';
-import { ObjectDeclaration, ConstDeclaration, ClassDeclaration, Identifier, NewInstanceDeclaration, ImportDeclaration, BaseDeclaration, ModuleDeclaration, VariableDeclaration, FunctionDeclaration, Type, DeclarationType } from './parser';
+import { ObjectDeclaration, ConstDeclaration, TypeDefDeclaration, ClassDeclaration, Identifier, NewInstanceDeclaration, ImportDeclaration, BaseDeclaration, ModuleDeclaration, VariableDeclaration, FunctionDeclaration, Type, DeclarationType } from './parser';
 
 interface Colors {
     text(text: string): string;
@@ -30,6 +30,25 @@ function guestType(value: any) {
         return 'string';
     }
     return "any";
+}
+
+function jsdoc(writer, colors, description, tags: { tag: string, value: string }[] = null) {
+    const comments = [];
+
+    if (description)
+        comments.push((description || '').trim());
+
+    if (tags && tags.length > 0) {
+        comments.push("");
+
+        for (const tag of tags) {
+            comments.push(`${tag.tag} ${tag.value}`);
+        }
+    }
+
+    if (comments.length > 0) {
+        jsdocComment(writer, colors, comments);
+    }
 }
 
 function jsdocComment(writer, colors, text: string[]) {
@@ -151,22 +170,9 @@ class ModuleMembersFormatter implements Writers {
     public function(name: string, part: FunctionDeclaration) {
 
         const paramsWithDescriptions = _.filter(part.params, param => param.description);
-        const comments = [];
+        const comments = [];      
 
-        if (part.description)
-            comments.push((part.description || '').trim());
-
-        if (paramsWithDescriptions.length > 0 && comments.length > 0) {
-            comments.push("");
-        }
-
-        for (const param of paramsWithDescriptions) {
-            comments.push(`@param ${param.name} ${param.description}`);
-        }
-
-        if (comments.length > 0) {
-            jsdocComment(this.writer, this.colors, comments);
-        }
+        jsdoc(this.writer, this.colors, part.description, paramsWithDescriptions.map(pwd => ({ tag: '@param', value: `${pwd.name} ${pwd.description}` })));
 
         const params = part.params.map(param => `${this.colors.identifier(param.name)}: ${formatType(param.types)}`).join(', ');
 
@@ -179,11 +185,16 @@ class ModuleMembersFormatter implements Writers {
     public constant(name: string, part: ConstDeclaration) {
         const json = JSON.stringify(part.value, null, 4).replace(/\"([^(\")"]+)\":/g, "$1:");
 
+        jsdoc(this.writer, this.colors, part.description);
+
+        if (part.exported)
+            this.writer.write('export ');
+
         if (name == "default") {
-            this.writer.write(`export default ${json};`);
+            this.writer.write(`default ${json};`);
         }
         else {
-            this.writer.write(`export var ${name}: ${guestType(part.value)};`);
+            this.writer.write(`var ${name}: ${guestType(part.value)};`);
         }
     }
 
@@ -240,6 +251,11 @@ class ModuleMembersFormatter implements Writers {
         else {
             this.writer.write(`var ${name}: any`);
         }
+    }
+
+    public typedef(name: string, part: TypeDefDeclaration) {
+        jsdoc(this.writer, this.colors, part.description);
+        this.writer.write(`type ${name} = ${formatType(part.types)};`);
     }
 }
 

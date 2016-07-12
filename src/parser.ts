@@ -74,7 +74,6 @@ namespace Doctrine {
 
 }
 
-
 var doctrine = require("doctrine");
 
 function getComments(node: ESTree.Node) {
@@ -89,46 +88,6 @@ function getComments(node: ESTree.Node) {
         }
     }
 }
-
-// function isFunctionDeclaration(node: ESTree.Node): node is ESTree.FunctionDeclaration {
-//     return node.type === "FunctionDeclaration";
-// }
-
-// function isVariableDeclaration(node: ESTree.Node): node is ESTree.VariableDeclaration {
-//     return node.type === "VariableDeclaration";
-// }
-
-// function isCallExpression(node: ESTree.Node): node is ESTree.CallExpression {
-//     return node.type === "CallExpression";
-// }
-
-// function isExpressionStatement(node: ESTree.Node): node is ESTree.ExpressionStatement {
-//     return node.type === "ExpressionStatement";
-// }
-
-// function isIdentifier(node: ESTree.Node): node is ESTree.Identifier {
-//     return node.type === "Identifier";
-// }
-
-// function isLiteral(node: ESTree.Node): node is ESTree.Literal {
-//     return node.type === "Literal";
-// }
-
-// function isAssignmentExpression(node: ESTree.Node): node is ESTree.AssignmentExpression {
-//     return node.type === "AssignmentExpression";
-// }
-
-// function isMemberExpression(node: ESTree.Node): node is ESTree.MemberExpression {
-//     return node.type === "MemberExpression";
-// }
-
-// function isFunctionExpression(node: ESTree.Node): node is ESTree.FunctionExpression {
-//     return node.type === "FunctionExpression";
-// }
-
-// function isBlockStatement(node: ESTree.Node): node is ESTree.BlockStatement {
-//     return node.type === "BlockStatement";
-// }
 
 function isReturnStatement(node: ESTree.Node): node is ESTree.ReturnStatement {
     return node.type === "ReturnStatement";
@@ -166,7 +125,8 @@ export enum DeclarationType {
     module,
     newInstance,
     identifier,
-    object
+    object,
+    typedef
 }
 
 export class VariableDeclaration extends BaseDeclaration {
@@ -184,6 +144,12 @@ export class Identifier extends BaseDeclaration {
 export class ConstDeclaration extends BaseDeclaration {
     constructor(public value: any) {
         super(DeclarationType.constant);
+    }
+}
+
+export class TypeDefDeclaration extends BaseDeclaration {
+    constructor(public types: Type[]) {
+        super(DeclarationType.typedef);
     }
 }
 
@@ -270,6 +236,10 @@ function getObjectPath(node: ESTree.Node) {
     });
 }
 
+function parseJsDoc(comments: string) {
+    return (comments && doctrine.parse(comments, { unwrap: true }) || { tags: [] }) as Doctrine.AST
+}
+
 export function parseCode(code: string, moduleName: string): { [name: string]: ModuleDeclaration } {
     const globalTypes = ['string', 'String', 'object', 'number', 'Function', 'any', 'Object', 'void'];
     const theModule = new ModuleDeclaration();
@@ -289,7 +259,7 @@ export function parseCode(code: string, moduleName: string): { [name: string]: M
         let paramsFormatted = params.map(p => (p as ESTree.Identifier).name).join(', ');
         let exported = new FunctionDeclaration();
 
-        let jsdoc = (comments && doctrine.parse(comments, { unwrap: true }) || { tags: [] }) as Doctrine.AST;
+        let jsdoc = parseJsDoc(comments);
         let { param, example, return: returns } = _.groupBy(jsdoc.tags, tag => tag.title);
         let jsdocParams = _.keyBy(param, tag => tag.name) || {};
 
@@ -341,8 +311,9 @@ export function parseCode(code: string, moduleName: string): { [name: string]: M
 
 
     function getExport(node: ESTree.Expression, comments: string): BaseDeclaration {
+        let jsdoc = parseJsDoc(comments);
 
-        return walk<BaseDeclaration>(node, {
+        let e = walk<BaseDeclaration>(node, {
             FunctionExpression: (node) => getFunctionExport(node, comments),
             Identifier: (node) => new Identifier(node.name),
             ArrayExpression: (node) => new ConstDeclaration(node.elements.map(e => (e as ESTree.Literal).value)),
@@ -359,6 +330,7 @@ export function parseCode(code: string, moduleName: string): { [name: string]: M
             },
             Literal: (node) => {
                 const e = new ConstDeclaration(node.value);
+                e.description = jsdoc.description;
                 return e;
             },
             ClassDeclaration: (node) => {
@@ -372,6 +344,11 @@ export function parseCode(code: string, moduleName: string): { [name: string]: M
                 return getFunctionExport(declaration, comments);
             }
         });
+
+        if (jsdoc)
+            e.description = jsdoc.description;
+
+        return e;
     }
 
     function matchType(jsTypes: string[]): MatchResult {
@@ -387,8 +364,30 @@ export function parseCode(code: string, moduleName: string): { [name: string]: M
         return { types, errors };
     }
 
+    debugger;
+
     for (var node of program.body) {
-        const comments = getComments(node);
+        const leadingComments: { type: string, value: string }[] = node['leadingComments'] || [];
+        const [comments, ...lead] = leadingComments.map(x => x.value).reverse();
+
+        if (lead && lead.length > 0) {
+            for (let comment of lead) {
+                const jsdoc = parseJsDoc(comment);
+
+                for (let tag of jsdoc.tags) {
+                    if (tag.title === 'typedef') {
+                        let jsDocTypes = parseJsDocType(tag.type);
+                        let types = matchType(jsDocTypes);
+                        let typedef = new TypeDefDeclaration(types.types);
+                        typedef.description = jsdoc.description;
+                        theModule.items[tag.name] = typedef;
+                        globalTypes.push(tag.name);
+                    }
+                }
+
+                debugger;
+            }
+        }
 
         walk(node, {
             VariableDeclaration: (node) =>
@@ -398,6 +397,9 @@ export function parseCode(code: string, moduleName: string): { [name: string]: M
                             walk(declarator.init, {
                                 FunctionExpression: (functionExpression) => {
                                     theModule.items[id.name] = getFunctionExport(functionExpression, comments);
+                                },
+                                Literal: (literal) => {
+                                    theModule.items[id.name] = getExport(literal, comments);
                                 },
                                 CallExpression: (init) =>
                                     walk(init.callee, {
@@ -435,6 +437,9 @@ export function parseCode(code: string, moduleName: string): { [name: string]: M
                                 assignment.object = getObjectPath(object);
                                 assignment.property = getObjectPath(property);
                             },
+                            ThisExpression: (exp) => {
+                                throw "Not Implemented";                                
+                            }
                         });
 
                         if (assignment.object === 'module' && assignment.property === "exports") {
@@ -467,6 +472,9 @@ export function parseCode(code: string, moduleName: string): { [name: string]: M
                         else {
                             console.log(`Assignment skipped ${assignment.object}.${assignment.property}`);
                         }
+                    },
+                    CallExpression: (expression) => { 
+                        throw "Not implemented";
                     }
                 });
             },
@@ -489,7 +497,6 @@ export function parseCode(code: string, moduleName: string): { [name: string]: M
                             });
                         },
                         FunctionDeclaration: (functionDeclaration) => {
-                            debugger;
                             exportMap[functionDeclaration.id.name] = getFunctionExport(functionDeclaration, comments);
                             exportMap[functionDeclaration.id.name].exported = true;
                         }
@@ -546,7 +553,8 @@ export function parseCode(code: string, moduleName: string): { [name: string]: M
 
             for (const param of params) {
                 for (const type of param.types) {
-                    if (type.namespace == null && globalTypes.indexOf(type.name) >= 0) continue;
+                    if (type.namespace == null && globalTypes.indexOf(type.name) >= 0) continue;                    
+
                     e.errors.push({ message: `Parameter "${param.name}" type "${type.name}" was not found` });
                     type.name = 'any';
                     type.namespace = null;

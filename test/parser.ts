@@ -4,30 +4,28 @@ import * as chai from 'chai';
 import * as _ from 'lodash';
 
 const expect = chai.expect;
-
+const root = `F:\\Projects\\git\\jsdoc2typings\\test\\`;// __dirname;
 import { parseCode } from '../src/parser';
 import { format } from '../src/writer';
 
 function processDirectory(dir: string) {
 
-    before(function () {
-       
-        
-    });
+    before( () => { });
 
     describe(dir, () => {
 
-        for (var item of fs.readdirSync(path.join(__dirname, dir))) {
-            let sourceFile = path.join(__dirname, dir, item);
+        for (var item of fs.readdirSync(path.join(root, dir))) {
+            let sourceFile = path.join(root, dir, item);
             const stat = fs.statSync(sourceFile);
 
             if (stat.isDirectory()) {
                 processDirectory(path.join(dir, item));
             }
+            
             else if (stat.isFile()) {
                 if (item.match(/.js$/)) {
                     let name = item.replace(/.js$/, '');
-                    let definitionFile = path.join(__dirname, dir, item.replace(/.js$/, '.d.ts'));
+                    let definitionFile = path.join(root, dir, item.replace(/.js$/, '.d.ts'));
 
                     if (fs.existsSync(definitionFile)) {
                         it(name, () => {
